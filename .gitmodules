@@ -1,10 +1,11 @@
-[submodule "metamod-source"]
-    path = metamod-source
+[submodule "libraries/metamod-source"]
+    path = libraries/metamod-source
     url = https://github.com/Wend4r/metamod-source
 
 [submodule "libraries/hl2sdk-cs2"]
     path = libraries/hl2sdk-cs2
     url = https://github.com/Wend4r/sourcesdk
+
 [submodule "libraries/spdlog"]
 	path = libraries/spdlog
 	url = https://github.com/gabime/spdlog

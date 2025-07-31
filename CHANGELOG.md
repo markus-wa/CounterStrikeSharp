@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-
+## Tests
 ## What's Changed in v1.0.328
 * feat: add `css_dump_leaks` command which outputs vector/angle count ([ad8116d](https://github.com/roflmuffin/CounterStrikeSharp/commit/ad8116d4d2c2cd05f3045eb33a06ba4c3d08e49f))
 * test: add integration tests xunit plugin/runner in [#928](https://github.com/roflmuffin/CounterStrikeSharp/pull/928) ([26a8f64](https://github.com/roflmuffin/CounterStrikeSharp/commit/26a8f641c854dae723e8251549bab424620aed43))

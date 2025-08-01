@@ -197,7 +197,7 @@ struct EmitSound_t
     bool m_bWarnOnMissingCloseCaption;
     bool m_bWarnOnDirectWaveReference;
     CEntityIndex m_nSpeakerEntity;
-    CUtlVector<Vector, CUtlMemory<Vector, int>> m_UtlVecSoundOrigin;
+    CUtlVectorMemory<Vector, CUtlVectorMemory<Vector, int>> m_UtlVecSoundOrigin;
     SoundEventGuid_t m_nForceGuid;
     gender_t m_SpeakerGender;
 };

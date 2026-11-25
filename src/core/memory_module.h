@@ -119,6 +119,9 @@ class CModule
 
     [[nodiscard]] bool IsInitialized() const { return m_bInitialized; }
 
+    // Executable segments as scanned for signatures (on-disk bytes for engine2 and server).
+    [[nodiscard]] const std::vector<Segments>& GetSegments() const { return m_vecSegments; }
+
     std::string m_pszModule{};
     std::string m_pszPath{};
     void* m_base{};
@@ -140,6 +143,7 @@ class CModule
     void DumpSymbols(ElfW(Dyn) * dyn);
 #endif
 
+    // rva: the section's RVA on Windows, the segment's file offset (p_offset) on Linux. nullopt if out of the file.
     std::optional<std::vector<std::uint8_t>>
     GetOriginalBytes(const std::vector<std::uint8_t>& disk_data, std::uintptr_t rva, std::size_t size);
 

@@ -101,6 +101,11 @@ public abstract class BaseMemoryFunction : NativeObject
         });
     }
 
+    // Set for core functions; bound on first use.
+    private readonly CoreFunction? _core;
+    private readonly DataType _returnType;
+    private readonly DataType[] _parameters = [];
+
     public BaseMemoryFunction(string signature, DataType returnType, DataType[] parameters) : base(
         CreateValveFunctionBySignature(signature, returnType, parameters))
     {
@@ -143,13 +148,35 @@ public abstract class BaseMemoryFunction : NativeObject
     {
     }
 
+    /// <summary>
+    /// A core memory function, bound lazily from <paramref name="core"/> on first call, hook or <see cref="NativeObject.Handle"/>
+    /// read (see <see cref="CoreFunction"/>).
+    /// </summary>
+    internal BaseMemoryFunction(CoreFunction core, DataType returnType, DataType[] parameters) : base(IntPtr.Zero)
+    {
+        _core = core;
+        _returnType = returnType;
+        _parameters = parameters;
+    }
+
+    // Binds a core function, throwing EngineFeatureUnavailableException if its Engine Feature is disabled.
+    protected override void EnsureNativeHandle()
+    {
+        if (_core != null) SetHandle(_core.Bind(_returnType, _parameters));
+    }
+
     public void Hook(Func<DynamicHook, HookResult> handler, HookMode mode)
     {
+        // On a disabled Engine Feature the hook registers but never fires (logged once), instead of throwing.
+        if (_core != null && !_core.CanHook()) return;
+
         NativeAPI.HookFunction(Handle, handler, mode == HookMode.Post);
     }
 
     public void Unhook(Func<DynamicHook, HookResult> handler, HookMode mode)
     {
+        if (_core != null && !_core.CanUnhook()) return;
+
         NativeAPI.UnhookFunction(Handle, handler, mode == HookMode.Post);
     }
 

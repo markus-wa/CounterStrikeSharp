@@ -21,38 +21,16 @@
 
 #include "core/gameconfig.h"
 #include "core/memory.h"
+#include "core/signature.h"
 #include "dbg.h"
 #include "log.h"
 #include "metamod_oslink.h"
 
 namespace counterstrikesharp::modules {
 namespace {
-// Returns the first position in [data, data + size) where the pattern matches (-1 is a wildcard), or nullptr.
-// Every candidate start is tested, including the last one (data + size - pattern size).
 std::uint8_t* FindPatternInRange(std::uint8_t* data, std::size_t size, const std::vector<int16_t>& sigBytes)
 {
-    if (sigBytes.empty() || size < sigBytes.size()) return nullptr;
-
-    const auto first_byte = sigBytes[0];
-    std::uint8_t* end = data + size - sigBytes.size() + 1; // one past the last candidate start
-
-    for (std::uint8_t* current = data; current < end; ++current)
-    {
-        if (first_byte != -1)
-        {
-            current = std::find(current, end, first_byte);
-            if (current == end) break;
-        }
-
-        if (std::equal(sigBytes.begin() + 1, sigBytes.end(), current + 1, [](auto opt, auto byte) {
-            return opt == -1 || opt == byte;
-        }))
-        {
-            return current;
-        }
-    }
-
-    return nullptr;
+    return const_cast<std::uint8_t*>(FindPattern(data, size, sigBytes));
 }
 } // namespace
 
@@ -199,14 +177,17 @@ CModule::CModule(std::string_view path, std::uint64_t base)
 
             if (should_read_from_disk)
             {
-                if (auto bytes = GetOriginalBytes(disk_data, start - m_baseAddress, size))
+                auto bytes = GetOriginalBytes(disk_data, start - m_baseAddress, size);
+                if (bytes && SegmentCopyMatchesImage(bytes->data(), data, size))
                 {
                     CSSHARP_CORE_INFO("Copying bytes from disk for {}", m_pszPath);
-                    segment.bytes = bytes.value();
+                    segment.bytes = std::move(*bytes);
                     continue;
                 }
-                CSSHARP_CORE_ERROR("Cannot get original bytes for {}", m_pszPath);
-                return;
+                // Never scan a misaligned copy: signatures would resolve to the wrong address.
+                if (bytes) CSSHARP_CORE_ERROR("On-disk bytes for {} do not match the loaded image, scanning loaded bytes", m_pszPath);
+                else
+                    CSSHARP_CORE_ERROR("Cannot get original bytes for {}, scanning loaded bytes", m_pszPath);
             }
 
             segment.bytes.assign(&data[0], &data[size]);
@@ -376,14 +357,17 @@ CModule::CModule(std::string_view path, dl_phdr_info* info)
 
         if (should_read_from_disk)
         {
-            if (auto bytes = GetOriginalBytes(disk_data, address - m_baseAddress, size))
+            auto bytes = GetOriginalBytes(disk_data, info->dlpi_phdr[i].p_offset, size);
+            if (bytes && SegmentCopyMatchesImage(bytes->data(), data, size))
             {
                 CSSHARP_CORE_INFO("Copying bytes from disk for {}", m_pszPath);
-                segment.bytes = bytes.value();
+                segment.bytes = std::move(*bytes);
                 continue;
             }
-            CSSHARP_CORE_ERROR("Cannot get original bytes for {}", m_pszPath);
-            return;
+            // Never scan a misaligned copy: signatures would resolve to the wrong address.
+            if (bytes) CSSHARP_CORE_ERROR("On-disk bytes for {} do not match the loaded image, scanning loaded bytes", m_pszPath);
+            else
+                CSSHARP_CORE_ERROR("Cannot get original bytes for {}, scanning loaded bytes", m_pszPath);
         }
 
         segment.bytes.assign(&data[0], &data[size]);
@@ -562,7 +546,8 @@ CModule::GetOriginalBytes(const std::vector<std::uint8_t>& disk_data, std::uintp
         }
         return std::nullopt;
 #else
-        // on linux you can just read from rva
+        // On Linux the caller passes the segment's file offset (p_offset). It is not the RVA: in libserver.so the
+        // executable segment has p_offset 0x9e40fc but p_vaddr 0x9e50fc.
         return reinterpret_cast<std::uintptr_t>(data + address);
 #endif
     };
@@ -571,6 +556,7 @@ CModule::GetOriginalBytes(const std::vector<std::uint8_t>& disk_data, std::uintp
     if (!disk_ptr) return std::nullopt;
 
     const auto disk_bytes = reinterpret_cast<std::uint8_t*>(*disk_ptr);
+    if (disk_bytes < disk_data.data() || disk_bytes + size > disk_data.data() + disk_data.size()) return std::nullopt;
     std::vector<std::uint8_t> result{ &disk_bytes[0], &disk_bytes[size] };
 
     return result;

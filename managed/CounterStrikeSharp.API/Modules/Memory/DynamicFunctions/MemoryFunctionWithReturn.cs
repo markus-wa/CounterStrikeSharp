@@ -12,6 +12,11 @@ public class MemoryFunctionWithReturn<TResult> : BaseMemoryFunction
     {
     }
 
+    internal MemoryFunctionWithReturn(CoreFunction core) : base(core, typeof(TResult).ToValidDataType(),
+        Array.Empty<DataType>())
+    {
+    }
+
     public MemoryFunctionWithReturn(string signature, string binarypath) : base(signature, binarypath, typeof(TResult).ToValidDataType(),
         Array.Empty<DataType>())
     {
@@ -31,6 +36,11 @@ public class MemoryFunctionWithReturn<TResult> : BaseMemoryFunction
 public class MemoryFunctionWithReturn<T1, TResult> : BaseMemoryFunction
 {
     public MemoryFunctionWithReturn(string signature) : base(signature, typeof(TResult).ToValidDataType(),
+        new[] { typeof(T1).ToValidDataType() })
+    {
+    }
+
+    internal MemoryFunctionWithReturn(CoreFunction core) : base(core, typeof(TResult).ToValidDataType(),
         new[] { typeof(T1).ToValidDataType() })
     {
     }
@@ -81,6 +91,11 @@ public class MemoryFunctionWithReturn<T1, T2, TResult> : BaseMemoryFunction
     {
     }
 
+    internal MemoryFunctionWithReturn(CoreFunction core) : base(core, typeof(TResult).ToValidDataType(),
+        new[] { typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType() })
+    {
+    }
+
     public MemoryFunctionWithReturn(string signature, string binarypath) : base(signature, binarypath, typeof(TResult).ToValidDataType(),
         new[] { typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType() })
     {
@@ -127,6 +142,11 @@ public class MemoryFunctionWithReturn<T1, T2, T3, TResult> : BaseMemoryFunction
     {
     }
 
+    internal MemoryFunctionWithReturn(CoreFunction core) : base(core, typeof(TResult).ToValidDataType(),
+        new[] { typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType() })
+    {
+    }
+
     public MemoryFunctionWithReturn(string signature, string binarypath) : base(signature, binarypath, typeof(TResult).ToValidDataType(),
         new[] { typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType() })
     {
@@ -169,6 +189,15 @@ public class MemoryFunctionWithReturn<T1, T2, T3, TResult> : BaseMemoryFunction
 public class MemoryFunctionWithReturn<T1, T2, T3, T4, TResult> : BaseMemoryFunction
 {
     public MemoryFunctionWithReturn(string signature) : base(signature, typeof(TResult).ToValidDataType(),
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType(),
+            typeof(T4).ToValidDataType()
+        })
+    {
+    }
+
+    internal MemoryFunctionWithReturn(CoreFunction core) : base(core, typeof(TResult).ToValidDataType(),
         new[]
         {
             typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType(),
@@ -247,6 +276,15 @@ public class MemoryFunctionWithReturn<T1, T2, T3, T4, T5, TResult> : BaseMemoryF
     {
     }
 
+    internal MemoryFunctionWithReturn(CoreFunction core) : base(core, typeof(TResult).ToValidDataType(),
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType(),
+            typeof(T4).ToValidDataType(), typeof(T5).ToValidDataType()
+        })
+    {
+    }
+
     public MemoryFunctionWithReturn(string signature, string binarypath) : base(signature, binarypath, typeof(TResult).ToValidDataType(),
         new[]
         {
@@ -317,6 +355,15 @@ public class MemoryFunctionWithReturn<T1, T2, T3, T4, T5, T6, TResult> : BaseMem
     {
     }
 
+    internal MemoryFunctionWithReturn(CoreFunction core) : base(core, typeof(TResult).ToValidDataType(),
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType(),
+            typeof(T4).ToValidDataType(), typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType()
+        })
+    {
+    }
+
     public MemoryFunctionWithReturn(string signature, string binarypath) : base(signature, binarypath, typeof(TResult).ToValidDataType(),
         new[]
         {
@@ -379,6 +426,16 @@ public class MemoryFunctionWithReturn<T1, T2, T3, T4, T5, T6, TResult> : BaseMem
 public class MemoryFunctionWithReturn<T1, T2, T3, T4, T5, T6, T7, TResult> : BaseMemoryFunction
 {
     public MemoryFunctionWithReturn(string signature) : base(signature, typeof(TResult).ToValidDataType(),
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType(),
+            typeof(T4).ToValidDataType(), typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType(),
+            typeof(T7).ToValidDataType()
+        })
+    {
+    }
+
+    internal MemoryFunctionWithReturn(CoreFunction core) : base(core, typeof(TResult).ToValidDataType(),
         new[]
         {
             typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType(),
@@ -464,6 +521,16 @@ public class MemoryFunctionWithReturn<T1, T2, T3, T4, T5, T6, T7, T8, TResult> :
     {
     }
 
+    internal MemoryFunctionWithReturn(CoreFunction core) : base(core, typeof(TResult).ToValidDataType(),
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType(),
+            typeof(T4).ToValidDataType(), typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType(),
+            typeof(T7).ToValidDataType(), typeof(T8).ToValidDataType()
+        })
+    {
+    }
+
     public MemoryFunctionWithReturn(string signature, string binarypath) : base(signature, binarypath, typeof(TResult).ToValidDataType(),
         new[]
         {
@@ -540,6 +607,16 @@ public class MemoryFunctionWithReturn<T1, T2, T3, T4, T5, T6, T7, T8, T9, TResul
     {
     }
 
+    internal MemoryFunctionWithReturn(CoreFunction core) : base(core, typeof(TResult).ToValidDataType(),
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType(),
+            typeof(T4).ToValidDataType(), typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType(),
+            typeof(T7).ToValidDataType(), typeof(T8).ToValidDataType(), typeof(T9).ToValidDataType()
+        })
+    {
+    }
+
     public MemoryFunctionWithReturn(string signature, string binarypath) : base(signature, binarypath, typeof(TResult).ToValidDataType(),
         new[]
         {
@@ -607,6 +684,17 @@ public class MemoryFunctionWithReturn<T1, T2, T3, T4, T5, T6, T7, T8, T9, TResul
 public class MemoryFunctionWithReturn<T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, TResult> : BaseMemoryFunction
 {
     public MemoryFunctionWithReturn(string signature) : base(signature, typeof(TResult).ToValidDataType(),
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType(),
+            typeof(T4).ToValidDataType(), typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType(),
+            typeof(T7).ToValidDataType(), typeof(T8).ToValidDataType(), typeof(T9).ToValidDataType(),
+            typeof(T10).ToValidDataType()
+        })
+    {
+    }
+
+    internal MemoryFunctionWithReturn(CoreFunction core) : base(core, typeof(TResult).ToValidDataType(),
         new[]
         {
             typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType(),

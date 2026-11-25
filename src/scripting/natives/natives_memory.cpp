@@ -112,35 +112,26 @@ void* FindVirtualTableNative(ScriptContext& scriptContext)
     return FindVirtualTable(moduleName, vtableName);
 }
 
-ValveFunction* CreateVirtualFunctionBySignature(ScriptContext& script_context)
+// The cdecl function at a free-standing address, with its argument types read from the native arguments starting at
+// first_argument. TakeDamageOld is detoured by core (while take-damage-hooks is available): finding it hands out that
+// function, so calls and hooks go through the detour. Otherwise shared through the cache, so a plugin signature and a
+// core Binding at the same address share one function (and its hooks). signature is null for an address from the report.
+static ValveFunction* GetOrCreateFunctionAt(ScriptContext& script_context,
+                                            void* function_addr,
+                                            int first_argument,
+                                            int num_arguments,
+                                            DataType_t return_type,
+                                            const char* signature)
 {
-    auto ptr = script_context.GetArgument<unsigned long>(0);
-    auto binary_name = script_context.GetArgument<const char*>(1);
-    auto signature_hex_string = script_context.GetArgument<const char*>(2);
-    auto num_arguments = script_context.GetArgument<int>(3);
-    auto return_type = script_context.GetArgument<DataType_t>(4);
-
-    auto* function_addr = FindSignature(binary_name, signature_hex_string);
-
-    // Special case for TakeDamageOld as we have detoured it. Only while the detour exists (take-damage-hooks available);
-    // the Gamedata entry may be missing, in which case plugin signatures are simply scanned.
-    const char* take_damage_signature = globals::gameConfig->GetSignature("CBaseEntity_TakeDamageOld");
-    if (globals::entityManager.Func_OnTakeDamage != nullptr && signature_hex_string != nullptr && take_damage_signature != nullptr &&
-        strcmp(signature_hex_string, take_damage_signature) == 0)
+    if (globals::entityManager.Func_OnTakeDamage != nullptr && globals::entityManager.Func_OnTakeDamage->m_ulAddr == function_addr)
     {
         return globals::entityManager.Func_OnTakeDamage;
-    }
-
-    if (function_addr == nullptr)
-    {
-        script_context.ThrowNativeError("Could not find signature %s", signature_hex_string);
-        return nullptr;
     }
 
     auto args = std::vector<DataType_t>();
     for (int i = 0; i < num_arguments; i++)
     {
-        args.push_back(script_context.GetArgument<DataType_t>(5 + i));
+        args.push_back(script_context.GetArgument<DataType_t>(first_argument + i));
     }
 
     VirtualFunctionCacheKey cacheKey;
@@ -154,18 +145,38 @@ ValveFunction* CreateVirtualFunctionBySignature(ScriptContext& script_context)
     if (it != m_virtualFunctionCache.end())
     {
         CSSHARP_CORE_TRACE("Virtual function found in cache, reusing existing instance at {}, signature {}", function_addr,
-                           signature_hex_string);
+                           signature ? signature : "<address>");
         return it->second;
     }
 
     auto function = new ValveFunction(function_addr, CONV_CDECL, args, return_type);
-    function->SetSignature(signature_hex_string);
+    if (signature) function->SetSignature(signature);
 
     m_virtualFunctionCache[cacheKey] = function;
 
-    CSSHARP_CORE_TRACE("Created new virtual function, pointer found at {}, signature {}", function_addr, signature_hex_string);
+    CSSHARP_CORE_TRACE("Created new virtual function, pointer found at {}, signature {}", function_addr,
+                       signature ? signature : "<address>");
 
     return function;
+}
+
+ValveFunction* CreateVirtualFunctionBySignature(ScriptContext& script_context)
+{
+    auto ptr = script_context.GetArgument<unsigned long>(0);
+    auto binary_name = script_context.GetArgument<const char*>(1);
+    auto signature_hex_string = script_context.GetArgument<const char*>(2);
+    auto num_arguments = script_context.GetArgument<int>(3);
+    auto return_type = script_context.GetArgument<DataType_t>(4);
+
+    auto* function_addr = FindSignature(binary_name, signature_hex_string);
+
+    if (function_addr == nullptr)
+    {
+        script_context.ThrowNativeError("Could not find signature %s", signature_hex_string);
+        return nullptr;
+    }
+
+    return GetOrCreateFunctionAt(script_context, function_addr, 5, num_arguments, return_type, signature_hex_string);
 }
 
 ValveFunction* CreateVirtualFunctionBySymbol(ScriptContext& script_context)
@@ -297,37 +308,7 @@ ValveFunction* CreateVirtualFunctionFromAddress(ScriptContext& script_context)
         return nullptr;
     }
 
-    // TakeDamageOld is detoured by core; hand out that function so calls and hooks go through the detour.
-    if (globals::entityManager.Func_OnTakeDamage != nullptr && globals::entityManager.Func_OnTakeDamage->m_ulAddr == function_addr)
-    {
-        return globals::entityManager.Func_OnTakeDamage;
-    }
-
-    auto args = std::vector<DataType_t>();
-    for (int i = 0; i < num_arguments; i++)
-    {
-        args.push_back(script_context.GetArgument<DataType_t>(3 + i));
-    }
-
-    VirtualFunctionCacheKey cacheKey;
-    cacheKey.functionAddr = function_addr;
-    cacheKey.callingConvention = CONV_CDECL;
-    cacheKey.args = args;
-    cacheKey.returnType = return_type;
-    cacheKey.vtableOffset = -1;
-
-    auto it = m_virtualFunctionCache.find(cacheKey);
-    if (it != m_virtualFunctionCache.end())
-    {
-        return it->second;
-    }
-
-    auto* function = new ValveFunction(function_addr, CONV_CDECL, args, return_type);
-    m_virtualFunctionCache[cacheKey] = function;
-
-    CSSHARP_CORE_TRACE("Created new function at {}", function_addr);
-
-    return function;
+    return GetOrCreateFunctionAt(script_context, function_addr, 3, num_arguments, return_type, nullptr);
 }
 
 ValveFunction* CreateVirtualFunction(ScriptContext& script_context)

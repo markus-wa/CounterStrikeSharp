@@ -18,6 +18,8 @@
 #undef snprintf
 #include <nlohmann/json.hpp>
 
+#include "core/schema_field_status.h"
+
 namespace counterstrikesharp::bindings {
 
 // --- Inputs ---
@@ -60,13 +62,6 @@ struct ModuleSegment
     std::size_t size = 0;
 };
 
-enum class SchemaFieldStatus : std::uint8_t
-{
-    Found,
-    ClassMissing,
-    FieldMissing,
-};
-
 struct SchemaFieldLookup
 {
     SchemaFieldStatus status = SchemaFieldStatus::ClassMissing;
@@ -92,7 +87,7 @@ enum class BindingStatus : std::uint8_t
     Failed,
 };
 
-// Closed set (spec A). Append only: values cross the native/managed boundary.
+// Closed set. Append only: values cross the native/managed boundary.
 enum class FailureReason : std::uint8_t
 {
     None,
@@ -176,6 +171,11 @@ EngineFeatureStatus EvaluateEngineFeature(const ResolutionReport& report, const 
 // "not found", "ambiguous (3 matches)", "missing for this OS", ...
 std::string DescribeFailure(const BindingResult& binding);
 
+// For natives called while their Engine Feature is disabled; same wording as the managed typed exception, e.g.
+// "Engine Feature cssharp.chat/say-hooks is disabled (Host_Say: not found)". A Binding absent from the report counts
+// as missing from Gamedata.
+std::string DescribeUnavailable(const ResolutionReport& report, const EngineFeatureDeclaration& feature);
+
 // One compact line for the early native log, e.g.
 // "Bindings for build 1.42.0.1/2000950: 1 of 12 failed: Host_Say (not found)"
 // "Bindings for build 1.42.0.1/2000950: all 12 resolved"
@@ -185,7 +185,7 @@ std::string FormatBindingSummary(const ResolutionReport& report);
 
 // The report as one JSON document for managed (the GET_RESOLUTION_REPORT native):
 // { "buildId": "...",
-//   "bindings": [ { "key", "kind": "Signature"|"Offset"|"RttiVtable", "resolved", "reason": <FailureReason name>,
+//   "bindings": [ { "key", "kind": "Signature"|"Offset"|"RttiVtable"|"SchemaField", "resolved", "reason": <FailureReason name>,
 //                   "matchCount", "address", "offset", "library" } ],
 //   "features": [ { "name", "bindings": [ "<key>", ... ] } ] }   <- the native-owned Engine Features
 // Enum values travel by name (the C++ enumerator names), so managed never depends on their numeric values.

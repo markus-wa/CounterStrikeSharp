@@ -98,7 +98,8 @@ public class CoreFunctionTests : IDisposable
     public void AKeyMissingFromGamedataOnlyBreaksItsOwnHelper()
     {
         // UTIL_Remove is absent from the report.
-        InstallReport(Resolved("ClientPrint", 0x1000), Resolved("UTIL_ClientPrintAll", 0x2000), Resolved("UTIL_CreateEntityByName", 0x6000));
+        InstallReport(Resolved("ClientPrint", 0x1000), Resolved("UTIL_ClientPrintAll", 0x2000),
+            Resolved("UTIL_CreateEntityByName", 0x6000));
 
         var missing = Assert.Throws<EngineFeatureUnavailableException>(() => VirtualFunctions.UTIL_Remove(IntPtr.Zero));
         Assert.Equal("Engine Feature cssharp.entity/remove is disabled (UTIL_Remove: missing from gamedata)", missing.Message);
@@ -117,7 +118,7 @@ public class CoreFunctionTests : IDisposable
 
         var warning = Assert.Single(_logger.Entries);
         Assert.Equal(LogLevel.Warning, warning.Level);
-        Assert.Equal("Memory function hook on ClientPrint registered on disabled cssharp.chat/client-print disabled " +
+        Assert.Equal("Memory function hook on ClientPrint registered on cssharp.chat/client-print disabled " +
                      "(ClientPrint: not found); it will never fire", warning.Message);
         Assert.Empty(_createdAt);
     }

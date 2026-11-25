@@ -11,6 +11,8 @@ internal static class ListenerEngineFeatures
 {
     private static readonly Dictionary<string, string> Features = new()
     {
+        // ticket 09
+        ["CheckTransmit"] = "cssharp.network/check-transmit",
     };
 
     /// <summary>

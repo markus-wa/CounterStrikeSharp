@@ -53,7 +53,7 @@ public class EngineFeatureRegistrationTests
         var entry = Assert.Single(logger.Entries);
         Assert.Equal(LogLevel.Warning, entry.Level);
         Assert.Equal(
-            "chat listener registered on disabled cssharp.chat/say-hooks disabled (Host_Say: not found); it will never fire",
+            "chat listener registered on cssharp.chat/say-hooks disabled (Host_Say: not found); it will never fire",
             entry.Message);
     }
 
@@ -68,6 +68,35 @@ public class EngineFeatureRegistrationTests
         set.CheckRegistration("cssharp.chat/say-hooks", "chat command", logger);
 
         Assert.Equal(2, logger.Entries.Count);
+    }
+
+    [Fact]
+    public void EachRegistrantIsWarnedOnce()
+    {
+        var set = SetWithSayHooks(resolved: false);
+        var logger = new CapturingLogger();
+        object firstPlugin = new(), secondPlugin = new();
+
+        Assert.False(set.CheckRegistration("cssharp.chat/say-hooks", "chat listener", logger, firstPlugin));
+        Assert.False(set.CheckRegistration("cssharp.chat/say-hooks", "chat listener", logger, secondPlugin));
+        Assert.False(set.CheckRegistration("cssharp.chat/say-hooks", "chat listener", logger, secondPlugin));
+
+        Assert.Equal(2, logger.Entries.Count);
+    }
+
+    [Fact]
+    public void EachPluginLoggerIsWarnedOnceWithoutAnExplicitRegistrant()
+    {
+        var set = SetWithSayHooks(resolved: false);
+        var firstPluginLogger = new CapturingLogger();
+        var secondPluginLogger = new CapturingLogger();
+
+        set.CheckRegistration("cssharp.chat/say-hooks", "chat listener", firstPluginLogger);
+        set.CheckRegistration("cssharp.chat/say-hooks", "chat listener", secondPluginLogger);
+        set.CheckRegistration("cssharp.chat/say-hooks", "chat listener", secondPluginLogger);
+
+        Assert.Single(firstPluginLogger.Entries);
+        Assert.Single(secondPluginLogger.Entries);
     }
 
     [Fact]

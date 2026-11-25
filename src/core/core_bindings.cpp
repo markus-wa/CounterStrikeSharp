@@ -47,16 +47,8 @@ SchemaFieldLookup FindServerSchemaField(std::string_view className, std::string_
     const std::string fieldString(fieldName);
     const auto lookup = schema::LookupField(classString.c_str(), hash_32_fnv1a_const(classString.c_str()), fieldString.c_str(),
                                             hash_32_fnv1a_const(fieldString.c_str()));
-    switch (lookup.status)
-    {
-        case schema::LookupStatus::Found:
-            return { SchemaFieldStatus::Found, lookup.key.offset };
-        case schema::LookupStatus::FieldMissing:
-            return { SchemaFieldStatus::FieldMissing };
-        case schema::LookupStatus::ClassMissing:
-            break;
-    }
-    return { SchemaFieldStatus::ClassMissing };
+    if (lookup.status != SchemaFieldStatus::Found) return { lookup.status };
+    return { SchemaFieldStatus::Found, lookup.key.offset };
 }
 
 std::string ReadBuildId()
@@ -88,7 +80,8 @@ void ResolveCoreBindings()
     const bool anyFailed = std::any_of(coreReport.Bindings().begin(), coreReport.Bindings().end(), [](const BindingResult& binding) {
         return !binding.Resolved();
     });
-    if (anyFailed) CSSHARP_CORE_ERROR("{}", summary);
+    // Same severity as the managed startup report: a failed Binding disables Engine Features, CounterStrikeSharp keeps running.
+    if (anyFailed) CSSHARP_CORE_WARN("{}", summary);
     else
         CSSHARP_CORE_INFO("{}", summary);
 }
@@ -137,15 +130,18 @@ bool ShouldRegisterHooks(std::string_view feature, std::string_view what)
         return false;
     }
 
-    const auto status = EvaluateEngineFeature(coreReport, *declaration);
-    if (status.available) return true;
+    if (EvaluateEngineFeature(coreReport, *declaration).available) return true;
 
-    if (status.failedBinding != nullptr)
-        CSSHARP_CORE_WARN("Engine Feature {} disabled ({}: {}), not registering {}", feature, status.failedBinding->key,
-                          DescribeFailure(*status.failedBinding), what);
-    else
-        CSSHARP_CORE_WARN("Engine Feature {} disabled (Bindings not resolved), not registering {}", feature, what);
+    // Not a report: the failed Binding is already in the boot summary line and the startup report.
+    CSSHARP_CORE_DEBUG("{}, not registering {}", DescribeUnavailable(coreReport, *declaration), what);
     return false;
+}
+
+std::string DescribeUnavailable(std::string_view feature)
+{
+    const auto* declaration = FindNativeEngineFeature(feature);
+    if (declaration == nullptr) return "Engine Feature " + std::string(feature) + " is not declared";
+    return bindings::DescribeUnavailable(coreReport, *declaration);
 }
 
 } // namespace counterstrikesharp::bindings

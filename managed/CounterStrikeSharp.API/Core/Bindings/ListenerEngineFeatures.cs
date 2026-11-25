@@ -11,6 +11,11 @@ internal static class ListenerEngineFeatures
 {
     private static readonly Dictionary<string, string> Features = new()
     {
+        // ticket 11
+        ["OnEntityTakeDamagePre"] = "cssharp.entity/take-damage-hooks",
+        ["OnEntityTakeDamagePost"] = "cssharp.entity/take-damage-hooks",
+        ["OnPlayerTakeDamagePre"] = "cssharp.entity/take-damage-hooks",
+        ["OnPlayerTakeDamagePost"] = "cssharp.entity/take-damage-hooks",
     };
 
     /// <summary>

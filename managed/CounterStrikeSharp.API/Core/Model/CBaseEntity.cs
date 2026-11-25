@@ -2,6 +2,7 @@ using FastGenericNew;
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using CounterStrikeSharp.API.Core.Bindings;
 using CounterStrikeSharp.API.Modules.Memory;
 using CounterStrikeSharp.API.Modules.Utils;
 using Vector = CounterStrikeSharp.API.Modules.Utils.Vector;
@@ -60,15 +61,19 @@ public partial class CBaseEntity
     }
 
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/dispatch-spawn</c> is disabled</exception>
     public void DispatchSpawn(CEntityKeyValues? keyValues)
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.EntityDispatchSpawn);
         Guard.IsValidEntity(this);
 
         NativeAPI.DispatchSpawn(Handle, keyValues?.Handle ?? IntPtr.Zero);
     }
 
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/dispatch-spawn</c> is disabled</exception>
     public void DispatchSpawn()
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.EntityDispatchSpawn);
         Guard.IsValidEntity(this);
         NativeAPI.DispatchSpawn(Handle, IntPtr.Zero);
     }
@@ -99,8 +104,10 @@ public partial class CBaseEntity
     /// <param name="volume">The volume of the soundevent.</param>
     /// <param name="pitch">The pitch of the soundevent.</param>
     /// <returns>The sound event guid.</returns>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/emit-sound</c> is disabled</exception>
     public uint EmitSound(string soundEventName, RecipientFilter? recipients = null, float volume = 1f, float pitch = 0)
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.EntityEmitSound);
         Guard.IsValidEntity(this);
 
         if (recipients == null)
@@ -115,10 +122,22 @@ public partial class CBaseEntity
     /// <summary>
     /// Returns true if the entity is a player pawn.
     /// </summary>
+    /// <exception cref="EngineFeatureUnavailableException">The <c>CBaseEntity_IsPlayerPawn</c> offset did not resolve.</exception>
     public bool IsPlayerPawn()
     {
         Guard.IsValidEntity(this);
 
-        return VirtualFunction.Create<IntPtr, bool>(Handle, GameData.GetOffset("CBaseEntity_IsPlayerPawn"))(Handle);
+        return VirtualFunction.Create<IntPtr, bool>(Handle, IsPlayerPawnOffset(EngineFeatures.Current))(Handle);
+    }
+
+    // A Binding of take-damage-hooks, but this helper needs only its own offset: a broken take-damage signature must
+    // not break it (it worked independently before).
+    internal static int IsPlayerPawnOffset(EngineFeatureSet features)
+    {
+        var binding = features.Report.Find("CBaseEntity_IsPlayerPawn");
+        if (binding is { Resolved: true, Kind: BindingKind.Offset }) return checked((int)binding.Offset);
+
+        throw new EngineFeatureUnavailableException(EngineFeatureNames.EntityTakeDamageHooks, "CBaseEntity_IsPlayerPawn",
+            binding is { Resolved: false } ? binding.Reason : BindingFailureReason.MissingFromGamedata, binding?.MatchCount ?? 0);
     }
 }

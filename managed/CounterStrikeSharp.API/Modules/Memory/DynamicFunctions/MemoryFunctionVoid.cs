@@ -11,7 +11,21 @@ public class MemoryFunctionVoid : BaseMemoryFunction
     {
     }
 
+    internal MemoryFunctionVoid(CoreFunction core) : base(core, DataType.DATA_TYPE_VOID, Array.Empty<DataType>())
+    {
+    }
+
     public MemoryFunctionVoid(string signature, string binarypath) : base(signature, binarypath, DataType.DATA_TYPE_VOID,
+        Array.Empty<DataType>())
+    {
+    }
+
+    /// <summary>
+    /// Creates the function from a raw signature in <paramref name="binarypath"/>. With <paramref name="strict"/> set, a
+    /// signature that matches more than once is rejected as ambiguous instead of binding to the first match; calling or
+    /// hooking the function then throws. See <see cref="BaseMemoryFunction(string, string, bool, DataType, DataType[])"/>.
+    /// </summary>
+    public MemoryFunctionVoid(string signature, string binarypath, bool strict) : base(signature, binarypath, strict, DataType.DATA_TYPE_VOID,
         Array.Empty<DataType>())
     {
     }
@@ -34,7 +48,22 @@ public class MemoryFunctionVoid<T1> : BaseMemoryFunction
     {
     }
 
+    internal MemoryFunctionVoid(CoreFunction core) : base(core, DataType.DATA_TYPE_VOID,
+        new[] { typeof(T1).ToValidDataType() })
+    {
+    }
+
     public MemoryFunctionVoid(string signature, string binarypath) : base(signature, binarypath, DataType.DATA_TYPE_VOID,
+        new[] { typeof(T1).ToValidDataType() })
+    {
+    }
+
+    /// <summary>
+    /// Creates the function from a raw signature in <paramref name="binarypath"/>. With <paramref name="strict"/> set, a
+    /// signature that matches more than once is rejected as ambiguous instead of binding to the first match; calling or
+    /// hooking the function then throws. See <see cref="BaseMemoryFunction(string, string, bool, DataType, DataType[])"/>.
+    /// </summary>
+    public MemoryFunctionVoid(string signature, string binarypath, bool strict) : base(signature, binarypath, strict, DataType.DATA_TYPE_VOID,
         new[] { typeof(T1).ToValidDataType() })
     {
     }
@@ -78,7 +107,22 @@ public class MemoryFunctionVoid<T1, T2> : BaseMemoryFunction
     {
     }
 
+    internal MemoryFunctionVoid(CoreFunction core) : base(core, DataType.DATA_TYPE_VOID,
+        new[] { typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType() })
+    {
+    }
+
     public MemoryFunctionVoid(string signature, string binarypath) : base(signature, binarypath, DataType.DATA_TYPE_VOID,
+        new[] { typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType() })
+    {
+    }
+
+    /// <summary>
+    /// Creates the function from a raw signature in <paramref name="binarypath"/>. With <paramref name="strict"/> set, a
+    /// signature that matches more than once is rejected as ambiguous instead of binding to the first match; calling or
+    /// hooking the function then throws. See <see cref="BaseMemoryFunction(string, string, bool, DataType, DataType[])"/>.
+    /// </summary>
+    public MemoryFunctionVoid(string signature, string binarypath, bool strict) : base(signature, binarypath, strict, DataType.DATA_TYPE_VOID,
         new[] { typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType() })
     {
     }
@@ -122,7 +166,22 @@ public class MemoryFunctionVoid<T1, T2, T3> : BaseMemoryFunction
     {
     }
 
+    internal MemoryFunctionVoid(CoreFunction core) : base(core, DataType.DATA_TYPE_VOID,
+        new[] { typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType() })
+    {
+    }
+
     public MemoryFunctionVoid(string signature, string binarypath) : base(signature, binarypath, DataType.DATA_TYPE_VOID,
+        new[] { typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType() })
+    {
+    }
+
+    /// <summary>
+    /// Creates the function from a raw signature in <paramref name="binarypath"/>. With <paramref name="strict"/> set, a
+    /// signature that matches more than once is rejected as ambiguous instead of binding to the first match; calling or
+    /// hooking the function then throws. See <see cref="BaseMemoryFunction(string, string, bool, DataType, DataType[])"/>.
+    /// </summary>
+    public MemoryFunctionVoid(string signature, string binarypath, bool strict) : base(signature, binarypath, strict, DataType.DATA_TYPE_VOID,
         new[] { typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(), typeof(T3).ToValidDataType() })
     {
     }
@@ -170,7 +229,30 @@ public class MemoryFunctionVoid<T1, T2, T3, T4> : BaseMemoryFunction
     {
     }
 
+    internal MemoryFunctionVoid(CoreFunction core) : base(core, DataType.DATA_TYPE_VOID,
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
+            typeof(T3).ToValidDataType(), typeof(T4).ToValidDataType()
+        })
+    {
+    }
+
     public MemoryFunctionVoid(string signature, string binarypath) : base(signature, binarypath, DataType.DATA_TYPE_VOID,
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
+            typeof(T3).ToValidDataType(), typeof(T4).ToValidDataType()
+        })
+    {
+    }
+
+    /// <summary>
+    /// Creates the function from a raw signature in <paramref name="binarypath"/>. With <paramref name="strict"/> set, a
+    /// signature that matches more than once is rejected as ambiguous instead of binding to the first match; calling or
+    /// hooking the function then throws. See <see cref="BaseMemoryFunction(string, string, bool, DataType, DataType[])"/>.
+    /// </summary>
+    public MemoryFunctionVoid(string signature, string binarypath, bool strict) : base(signature, binarypath, strict, DataType.DATA_TYPE_VOID,
         new[]
         {
             typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
@@ -239,7 +321,32 @@ public class MemoryFunctionVoid<T1, T2, T3, T4, T5> : BaseMemoryFunction
     {
     }
 
+    internal MemoryFunctionVoid(CoreFunction core) : base(core, DataType.DATA_TYPE_VOID,
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
+            typeof(T3).ToValidDataType(), typeof(T4).ToValidDataType(),
+            typeof(T5).ToValidDataType()
+        })
+    {
+    }
+
     public MemoryFunctionVoid(string signature, string binarypath) : base(signature, binarypath, DataType.DATA_TYPE_VOID,
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
+            typeof(T3).ToValidDataType(), typeof(T4).ToValidDataType(),
+            typeof(T5).ToValidDataType()
+        })
+    {
+    }
+
+    /// <summary>
+    /// Creates the function from a raw signature in <paramref name="binarypath"/>. With <paramref name="strict"/> set, a
+    /// signature that matches more than once is rejected as ambiguous instead of binding to the first match; calling or
+    /// hooking the function then throws. See <see cref="BaseMemoryFunction(string, string, bool, DataType, DataType[])"/>.
+    /// </summary>
+    public MemoryFunctionVoid(string signature, string binarypath, bool strict) : base(signature, binarypath, strict, DataType.DATA_TYPE_VOID,
         new[]
         {
             typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
@@ -313,7 +420,32 @@ public class MemoryFunctionVoid<T1, T2, T3, T4, T5, T6> : BaseMemoryFunction
     {
     }
 
+    internal MemoryFunctionVoid(CoreFunction core) : base(core, DataType.DATA_TYPE_VOID,
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
+            typeof(T3).ToValidDataType(), typeof(T4).ToValidDataType(),
+            typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType()
+        })
+    {
+    }
+
     public MemoryFunctionVoid(string signature, string binarypath) : base(signature, binarypath, DataType.DATA_TYPE_VOID,
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
+            typeof(T3).ToValidDataType(), typeof(T4).ToValidDataType(),
+            typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType()
+        })
+    {
+    }
+
+    /// <summary>
+    /// Creates the function from a raw signature in <paramref name="binarypath"/>. With <paramref name="strict"/> set, a
+    /// signature that matches more than once is rejected as ambiguous instead of binding to the first match; calling or
+    /// hooking the function then throws. See <see cref="BaseMemoryFunction(string, string, bool, DataType, DataType[])"/>.
+    /// </summary>
+    public MemoryFunctionVoid(string signature, string binarypath, bool strict) : base(signature, binarypath, strict, DataType.DATA_TYPE_VOID,
         new[]
         {
             typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
@@ -388,7 +520,34 @@ public class MemoryFunctionVoid<T1, T2, T3, T4, T5, T6, T7> : BaseMemoryFunction
     {
     }
 
+    internal MemoryFunctionVoid(CoreFunction core) : base(core, DataType.DATA_TYPE_VOID,
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
+            typeof(T3).ToValidDataType(), typeof(T4).ToValidDataType(),
+            typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType(),
+            typeof(T7).ToValidDataType()
+        })
+    {
+    }
+
     public MemoryFunctionVoid(string signature, string binarypath) : base(signature, binarypath, DataType.DATA_TYPE_VOID,
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
+            typeof(T3).ToValidDataType(), typeof(T4).ToValidDataType(),
+            typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType(),
+            typeof(T7).ToValidDataType()
+        })
+    {
+    }
+
+    /// <summary>
+    /// Creates the function from a raw signature in <paramref name="binarypath"/>. With <paramref name="strict"/> set, a
+    /// signature that matches more than once is rejected as ambiguous instead of binding to the first match; calling or
+    /// hooking the function then throws. See <see cref="BaseMemoryFunction(string, string, bool, DataType, DataType[])"/>.
+    /// </summary>
+    public MemoryFunctionVoid(string signature, string binarypath, bool strict) : base(signature, binarypath, strict, DataType.DATA_TYPE_VOID,
         new[]
         {
             typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
@@ -468,7 +627,34 @@ public class MemoryFunctionVoid<T1, T2, T3, T4, T5, T6, T7, T8> : BaseMemoryFunc
     {
     }
 
+    internal MemoryFunctionVoid(CoreFunction core) : base(core, DataType.DATA_TYPE_VOID,
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
+            typeof(T3).ToValidDataType(), typeof(T4).ToValidDataType(),
+            typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType(),
+            typeof(T7).ToValidDataType(), typeof(T8).ToValidDataType()
+        })
+    {
+    }
+
     public MemoryFunctionVoid(string signature, string binarypath) : base(signature, binarypath, DataType.DATA_TYPE_VOID,
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
+            typeof(T3).ToValidDataType(), typeof(T4).ToValidDataType(),
+            typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType(),
+            typeof(T7).ToValidDataType(), typeof(T8).ToValidDataType()
+        })
+    {
+    }
+
+    /// <summary>
+    /// Creates the function from a raw signature in <paramref name="binarypath"/>. With <paramref name="strict"/> set, a
+    /// signature that matches more than once is rejected as ambiguous instead of binding to the first match; calling or
+    /// hooking the function then throws. See <see cref="BaseMemoryFunction(string, string, bool, DataType, DataType[])"/>.
+    /// </summary>
+    public MemoryFunctionVoid(string signature, string binarypath, bool strict) : base(signature, binarypath, strict, DataType.DATA_TYPE_VOID,
         new[]
         {
             typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
@@ -549,7 +735,36 @@ public class MemoryFunctionVoid<T1, T2, T3, T4, T5, T6, T7, T8, T9> : BaseMemory
     {
     }
 
+    internal MemoryFunctionVoid(CoreFunction core) : base(core, DataType.DATA_TYPE_VOID,
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
+            typeof(T3).ToValidDataType(), typeof(T4).ToValidDataType(),
+            typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType(),
+            typeof(T7).ToValidDataType(), typeof(T8).ToValidDataType(),
+            typeof(T9).ToValidDataType()
+        })
+    {
+    }
+
     public MemoryFunctionVoid(string signature, string binarypath) : base(signature, binarypath, DataType.DATA_TYPE_VOID,
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
+            typeof(T3).ToValidDataType(), typeof(T4).ToValidDataType(),
+            typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType(),
+            typeof(T7).ToValidDataType(), typeof(T8).ToValidDataType(),
+            typeof(T9).ToValidDataType()
+        })
+    {
+    }
+
+    /// <summary>
+    /// Creates the function from a raw signature in <paramref name="binarypath"/>. With <paramref name="strict"/> set, a
+    /// signature that matches more than once is rejected as ambiguous instead of binding to the first match; calling or
+    /// hooking the function then throws. See <see cref="BaseMemoryFunction(string, string, bool, DataType, DataType[])"/>.
+    /// </summary>
+    public MemoryFunctionVoid(string signature, string binarypath, bool strict) : base(signature, binarypath, strict, DataType.DATA_TYPE_VOID,
         new[]
         {
             typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
@@ -635,7 +850,36 @@ public class MemoryFunctionVoid<T1, T2, T3, T4, T5, T6, T7, T8, T9, T10> : BaseM
     {
     }
 
+    internal MemoryFunctionVoid(CoreFunction core) : base(core, DataType.DATA_TYPE_VOID,
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
+            typeof(T3).ToValidDataType(), typeof(T4).ToValidDataType(),
+            typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType(),
+            typeof(T7).ToValidDataType(), typeof(T8).ToValidDataType(),
+            typeof(T9).ToValidDataType(), typeof(T10).ToValidDataType()
+        })
+    {
+    }
+
     public MemoryFunctionVoid(string signature, string binarypath) : base(signature, binarypath, DataType.DATA_TYPE_VOID,
+        new[]
+        {
+            typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),
+            typeof(T3).ToValidDataType(), typeof(T4).ToValidDataType(),
+            typeof(T5).ToValidDataType(), typeof(T6).ToValidDataType(),
+            typeof(T7).ToValidDataType(), typeof(T8).ToValidDataType(),
+            typeof(T9).ToValidDataType(), typeof(T10).ToValidDataType()
+        })
+    {
+    }
+
+    /// <summary>
+    /// Creates the function from a raw signature in <paramref name="binarypath"/>. With <paramref name="strict"/> set, a
+    /// signature that matches more than once is rejected as ambiguous instead of binding to the first match; calling or
+    /// hooking the function then throws. See <see cref="BaseMemoryFunction(string, string, bool, DataType, DataType[])"/>.
+    /// </summary>
+    public MemoryFunctionVoid(string signature, string binarypath, bool strict) : base(signature, binarypath, strict, DataType.DATA_TYPE_VOID,
         new[]
         {
             typeof(T1).ToValidDataType(), typeof(T2).ToValidDataType(),

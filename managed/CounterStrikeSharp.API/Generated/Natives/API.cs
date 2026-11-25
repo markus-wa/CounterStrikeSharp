@@ -1609,6 +1609,23 @@ namespace CounterStrikeSharp.API.Core
 			}
 		}
 
+        public static IntPtr CreateVirtualFunctionFromAddress(IntPtr address, int numarguments, int returntype, object[] arguments){
+			lock (ScriptContext.GlobalScriptContext.Lock) {
+			ScriptContext.GlobalScriptContext.Reset();
+			ScriptContext.GlobalScriptContext.PushPrimitive(address);
+			ScriptContext.GlobalScriptContext.PushPrimitive(numarguments);
+			ScriptContext.GlobalScriptContext.PushPrimitive(returntype);
+			foreach (var obj in arguments)
+			{
+				ScriptContext.GlobalScriptContext.Push(obj);
+			}
+			ScriptContext.GlobalScriptContext.SetIdentifier(0x50B0B302);
+			ScriptContext.GlobalScriptContext.Invoke();
+			ScriptContext.GlobalScriptContext.CheckErrors();
+			return ScriptContext.GlobalScriptContext.GetResultPrimitive<IntPtr>();
+			}
+		}
+
         public static void HookFunction(IntPtr function, InputArgument hook, bool post){
 			lock (ScriptContext.GlobalScriptContext.Lock) {
 			ScriptContext.GlobalScriptContext.Reset();
@@ -1670,6 +1687,18 @@ namespace CounterStrikeSharp.API.Core
 			ScriptContext.GlobalScriptContext.Invoke();
 			ScriptContext.GlobalScriptContext.CheckErrors();
 			return ScriptContext.GlobalScriptContext.GetResultPrimitive<IntPtr>();
+			}
+		}
+
+        public static int CountSignatureMatches(string modulepath, string signature){
+			lock (ScriptContext.GlobalScriptContext.Lock) {
+			ScriptContext.GlobalScriptContext.Reset();
+			ScriptContext.GlobalScriptContext.PushString(modulepath);
+			ScriptContext.GlobalScriptContext.PushString(signature);
+			ScriptContext.GlobalScriptContext.SetIdentifier(0x9D945147);
+			ScriptContext.GlobalScriptContext.Invoke();
+			ScriptContext.GlobalScriptContext.CheckErrors();
+			return ScriptContext.GlobalScriptContext.GetResultPrimitive<int>();
 			}
 		}
 

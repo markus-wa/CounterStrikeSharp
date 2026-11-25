@@ -12,20 +12,111 @@ namespace CounterStrikeSharp.API.Core;
 /// </summary>
 public enum EngineFeature
 {
+    /// <summary><c>cssharp.chat/client-print</c></summary>
+    ChatClientPrint = -1275197811,
+
     /// <summary><c>cssharp.chat/say-hooks</c></summary>
     ChatSayHooks = 2095797270,
+
+    /// <summary><c>cssharp.entity/accept-input</c></summary>
+    EntityAcceptInput = 1580885254,
+
+    /// <summary><c>cssharp.entity/add-io-event</c></summary>
+    EntityAddIoEvent = 251219268,
+
+    /// <summary><c>cssharp.entity/dispatch-spawn</c></summary>
+    EntityDispatchSpawn = -1778353521,
+
+    /// <summary><c>cssharp.entity/emit-sound</c></summary>
+    EntityEmitSound = -654186022,
+
+    /// <summary><c>cssharp.entity/output-hooks</c></summary>
+    EntityOutputHooks = -1424924309,
+
+    /// <summary><c>cssharp.entity/take-damage-hit-group</c></summary>
+    EntityTakeDamageHitGroup = 494872892,
+
+    /// <summary><c>cssharp.entity/take-damage-hooks</c></summary>
+    EntityTakeDamageHooks = 1288636203,
+
+    /// <summary><c>cssharp.events/fire-event-to-client</c></summary>
+    EventsFireEventToClient = 418056366,
+
+    /// <summary><c>cssharp.events/game-events</c></summary>
+    EventsGameEvents = -64556705,
+
+    /// <summary><c>cssharp.network/check-transmit</c></summary>
+    NetworkCheckTransmit = -897261195,
+
+    /// <summary><c>cssharp.network/state-changed</c></summary>
+    NetworkStateChanged = -1875359226,
+
+    /// <summary><c>cssharp.server/game-system-events</c></summary>
+    ServerGameSystemEvents = -1560303083,
 }
 
 /// <summary>The stable string names of the <see cref="EngineFeature"/> values.</summary>
 public static class EngineFeatureNames
 {
+    /// <summary><c>cssharp.chat/client-print</c></summary>
+    public const string ChatClientPrint = "cssharp.chat/client-print";
+
     /// <summary><c>cssharp.chat/say-hooks</c></summary>
     public const string ChatSayHooks = "cssharp.chat/say-hooks";
+
+    /// <summary><c>cssharp.entity/accept-input</c></summary>
+    public const string EntityAcceptInput = "cssharp.entity/accept-input";
+
+    /// <summary><c>cssharp.entity/add-io-event</c></summary>
+    public const string EntityAddIoEvent = "cssharp.entity/add-io-event";
+
+    /// <summary><c>cssharp.entity/dispatch-spawn</c></summary>
+    public const string EntityDispatchSpawn = "cssharp.entity/dispatch-spawn";
+
+    /// <summary><c>cssharp.entity/emit-sound</c></summary>
+    public const string EntityEmitSound = "cssharp.entity/emit-sound";
+
+    /// <summary><c>cssharp.entity/output-hooks</c></summary>
+    public const string EntityOutputHooks = "cssharp.entity/output-hooks";
+
+    /// <summary><c>cssharp.entity/take-damage-hit-group</c></summary>
+    public const string EntityTakeDamageHitGroup = "cssharp.entity/take-damage-hit-group";
+
+    /// <summary><c>cssharp.entity/take-damage-hooks</c></summary>
+    public const string EntityTakeDamageHooks = "cssharp.entity/take-damage-hooks";
+
+    /// <summary><c>cssharp.events/fire-event-to-client</c></summary>
+    public const string EventsFireEventToClient = "cssharp.events/fire-event-to-client";
+
+    /// <summary><c>cssharp.events/game-events</c></summary>
+    public const string EventsGameEvents = "cssharp.events/game-events";
+
+    /// <summary><c>cssharp.network/check-transmit</c></summary>
+    public const string NetworkCheckTransmit = "cssharp.network/check-transmit";
+
+    /// <summary><c>cssharp.network/state-changed</c></summary>
+    public const string NetworkStateChanged = "cssharp.network/state-changed";
+
+    /// <summary><c>cssharp.server/game-system-events</c></summary>
+    public const string ServerGameSystemEvents = "cssharp.server/game-system-events";
 
     /// <summary>The name of an Engine Feature value; null for a value this version does not know.</summary>
     public static string? GetName(this EngineFeature feature) => feature switch
     {
+        EngineFeature.ChatClientPrint => ChatClientPrint,
         EngineFeature.ChatSayHooks => ChatSayHooks,
+        EngineFeature.EntityAcceptInput => EntityAcceptInput,
+        EngineFeature.EntityAddIoEvent => EntityAddIoEvent,
+        EngineFeature.EntityDispatchSpawn => EntityDispatchSpawn,
+        EngineFeature.EntityEmitSound => EntityEmitSound,
+        EngineFeature.EntityOutputHooks => EntityOutputHooks,
+        EngineFeature.EntityTakeDamageHitGroup => EntityTakeDamageHitGroup,
+        EngineFeature.EntityTakeDamageHooks => EntityTakeDamageHooks,
+        EngineFeature.EventsFireEventToClient => EventsFireEventToClient,
+        EngineFeature.EventsGameEvents => EventsGameEvents,
+        EngineFeature.NetworkCheckTransmit => NetworkCheckTransmit,
+        EngineFeature.NetworkStateChanged => NetworkStateChanged,
+        EngineFeature.ServerGameSystemEvents => ServerGameSystemEvents,
         _ => null,
     };
 }

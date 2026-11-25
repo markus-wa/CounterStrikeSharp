@@ -1,7 +1,10 @@
 #include <doctest.h>
 
+#include <algorithm>
 #include <set>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "core/binding_resolver.h"
@@ -90,6 +93,143 @@ TEST_CASE("The native Engine Feature catalog declares say-hooks on Host_Say")
     CHECK(sayHooks->bindings[0].key == "Host_Say");
     CHECK(sayHooks->bindings[0].kind == BindingKind::Signature);
     CHECK(FindNativeEngineFeature("cssharp.nope/nope") == nullptr);
+}
+
+TEST_CASE("The native catalog declares the event and network Engine Features, game-events on its RTTI vtable")
+{
+    auto bindingsOf = [](std::string_view name) {
+        const auto* feature = FindNativeEngineFeature(name);
+        REQUIRE_MESSAGE(feature != nullptr, name);
+        return feature->bindings;
+    };
+
+    const auto gameEvents = bindingsOf(features::GameEvents);
+    CHECK(features::GameEvents == "cssharp.events/game-events");
+    REQUIRE(gameEvents.size() == 2);
+    CHECK(gameEvents[0].key == "CGameEventManager_Init");
+    CHECK(gameEvents[0].kind == BindingKind::Signature);
+    CHECK(gameEvents[1].key == "CGameEventManager");
+    CHECK(gameEvents[1].kind == BindingKind::RttiVtable);
+    CHECK(gameEvents[1].library == "server");
+
+    const auto fireEventToClient = bindingsOf(features::FireEventToClient);
+    CHECK(features::FireEventToClient == "cssharp.events/fire-event-to-client");
+    REQUIRE(fireEventToClient.size() == 1);
+    CHECK(fireEventToClient[0].key == "LegacyGameEventListener");
+
+    const auto stateChanged = bindingsOf(features::StateChanged);
+    CHECK(features::StateChanged == "cssharp.network/state-changed");
+    REQUIRE(stateChanged.size() == 2);
+    CHECK(stateChanged[0].key == "NetworkStateChanged");
+    CHECK(stateChanged[0].kind == BindingKind::Signature);
+    CHECK(stateChanged[1].key == "SetStateChanged");
+    CHECK(stateChanged[1].kind == BindingKind::Offset);
+
+    const auto checkTransmit = bindingsOf(features::CheckTransmit);
+    CHECK(features::CheckTransmit == "cssharp.network/check-transmit");
+    REQUIRE(checkTransmit.size() == 2);
+    CHECK(checkTransmit[0].key == "ISource2GameEntities::CheckTransmit");
+    CHECK(checkTransmit[0].kind == BindingKind::Offset);
+    CHECK(checkTransmit[1].key == "CheckTransmitPlayerSlot");
+    CHECK(checkTransmit[1].kind == BindingKind::Offset);
+}
+
+TEST_CASE("An RTTI vtable Binding of the catalog is resolved by class name in its library, not taken from Gamedata")
+{
+    // Gamedata never has the class name, and a Gamedata key with that name must not turn it into a Signature.
+    const nlohmann::json root = {
+        { "CGameEventManager", { { "signatures", { { "library", "server" }, { "linux", "55 48" }, { "windows", "55" } } } } },
+    };
+    const auto gamedata = ParseGamedata(root, "linux");
+    const auto declarations = CoreBindingDeclarations(gamedata);
+    const auto vtable = std::find_if(declarations.begin(), declarations.end(), [](const BindingDeclaration& d) {
+        return d.key == "CGameEventManager";
+    });
+    REQUIRE(vtable != declarations.end());
+    CHECK(vtable->kind == BindingKind::RttiVtable);
+
+    ModuleImage server;
+    server.findVirtualTable = [](std::string_view name) -> std::uintptr_t { return name == "CGameEventManager" ? 0x5000 : 0; };
+    ModuleImages found;
+    found.emplace("server", server);
+    const auto* gameEvents = FindNativeEngineFeature(features::GameEvents);
+    REQUIRE(gameEvents != nullptr);
+
+    const std::vector<BindingDeclaration> vtableOnly{ *vtable };
+    const auto resolved = ResolveBindings("b", gamedata, found, vtableOnly);
+    REQUIRE(resolved.Find("CGameEventManager") != nullptr);
+    CHECK(resolved.Find("CGameEventManager")->address == 0x5000);
+
+    const auto missing = ResolveBindings("b", gamedata, {}, declarations);
+    const auto status = EvaluateEngineFeature(missing, *gameEvents);
+    CHECK_FALSE(status.available);
+    REQUIRE(status.failedBinding != nullptr);
+    // CGameEventManager_Init is missing from this Gamedata; once it resolves, the vtable is what fails.
+    CHECK(status.failedBinding->key == "CGameEventManager_Init");
+    CHECK(DescribeFailure(*missing.Find("CGameEventManager")) == "RTTI vtable not found");
+}
+
+TEST_CASE("The native Engine Feature catalog declares game-system-events on the game-system signature and RunThink's schema fields")
+{
+    const auto* gameSystem = FindNativeEngineFeature(features::ServerGameSystemEvents);
+    REQUIRE(gameSystem != nullptr);
+    CHECK(gameSystem->name == "cssharp.server/game-system-events");
+
+    std::vector<std::pair<std::string, BindingKind>> bindings;
+    for (const auto& binding : gameSystem->bindings)
+        bindings.emplace_back(binding.key, binding.kind);
+    CHECK(bindings == std::vector<std::pair<std::string, BindingKind>>{
+                          { "IGameSystem_InitAllSystems_pFirst", BindingKind::Signature },
+                          { "CCSPlayerController::m_hPlayerPawn", BindingKind::SchemaField },
+                          { "CBasePlayerController::m_iConnected", BindingKind::SchemaField },
+                          { "CBasePlayerPawn::m_pMovementServices", BindingKind::SchemaField },
+                          { "CPlayer_MovementServices::m_nButtons", BindingKind::SchemaField },
+                          { "CInButtonState::m_pButtonStates", BindingKind::SchemaField },
+                      });
+}
+
+TEST_CASE("Entity IO, sound and spawn are separate Engine Features, each on its own Binding")
+{
+    const std::vector<std::pair<std::string_view, std::string>> expected{
+        { "cssharp.entity/output-hooks", "CEntityIOOutput_FireOutputInternal" },
+        { "cssharp.entity/accept-input", "CEntityInstance_AcceptInput" },
+        { "cssharp.entity/add-io-event", "CEntitySystem_AddEntityIOEvent" },
+        { "cssharp.entity/emit-sound", "CBaseEntity_EmitSoundFilter" },
+        { "cssharp.entity/dispatch-spawn", "CBaseEntity_DispatchSpawn" },
+    };
+    for (const auto& [name, key] : expected)
+    {
+        const auto* feature = FindNativeEngineFeature(name);
+        REQUIRE_MESSAGE(feature != nullptr, name);
+        REQUIRE(feature->bindings.size() == 1);
+        CHECK(feature->bindings[0].key == key);
+        CHECK(feature->bindings[0].kind == BindingKind::Signature);
+    }
+    CHECK(FindNativeEngineFeature(features::EntityOutputHooks) != nullptr);
+}
+
+TEST_CASE("Breaking either take-damage Binding disables take-damage-hooks")
+{
+    const auto* takeDamage = FindNativeEngineFeature(features::EntityTakeDamageHooks);
+    REQUIRE(takeDamage != nullptr);
+    CHECK(takeDamage->name == "cssharp.entity/take-damage-hooks");
+
+    const ResolutionReport bothResolved("b", { Resolved("CBaseEntity_TakeDamageOld"), Resolved("CBaseEntity_IsPlayerPawn") });
+    CHECK(EvaluateEngineFeature(bothResolved, *takeDamage).available);
+
+    const ResolutionReport signatureBroken(
+        "b", { Failed("CBaseEntity_TakeDamageOld", FailureReason::NotFound), Resolved("CBaseEntity_IsPlayerPawn") });
+    auto status = EvaluateEngineFeature(signatureBroken, *takeDamage);
+    CHECK_FALSE(status.available);
+    REQUIRE(status.failedBinding != nullptr);
+    CHECK(status.failedBinding->key == "CBaseEntity_TakeDamageOld");
+
+    const ResolutionReport offsetBroken(
+        "b", { Resolved("CBaseEntity_TakeDamageOld"), Failed("CBaseEntity_IsPlayerPawn", FailureReason::MissingForThisOs) });
+    status = EvaluateEngineFeature(offsetBroken, *takeDamage);
+    CHECK_FALSE(status.available);
+    REQUIRE(status.failedBinding != nullptr);
+    CHECK(status.failedBinding->key == "CBaseEntity_IsPlayerPawn");
 }
 
 TEST_CASE("The catalog is consistent: unique feature names, namespaced, and core Bindings declared once each")

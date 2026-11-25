@@ -8,7 +8,7 @@ namespace {
 
 BindingDeclaration Signature(std::string key) { return { std::move(key), BindingKind::Signature }; }
 BindingDeclaration Offset(std::string key) { return { std::move(key), BindingKind::Offset }; }
-[[maybe_unused]] BindingDeclaration RttiVtable(std::string className, std::string library)
+BindingDeclaration RttiVtable(std::string className, std::string library)
 {
     return { std::move(className), BindingKind::RttiVtable, std::move(library) };
 }
@@ -22,6 +22,24 @@ BindingDeclaration Offset(std::string key) { return { std::move(key), BindingKin
 // Additive only. A Binding may appear in several rows; it is resolved once.
 const std::vector<EngineFeatureDeclaration> kEngineFeatures{
     { std::string(features::ChatSayHooks), { Signature("Host_Say") } },
+    // ticket 09
+    { std::string(features::GameEvents), { Signature("CGameEventManager_Init"), RttiVtable("CGameEventManager", "server") } },
+    { std::string(features::FireEventToClient), { Signature("LegacyGameEventListener") } },
+    { std::string(features::StateChanged), { Signature("NetworkStateChanged"), Offset("SetStateChanged") } },
+    { std::string(features::CheckTransmit), { Offset("ISource2GameEntities::CheckTransmit"), Offset("CheckTransmitPlayerSlot") } },
+    // ticket 10: our game system (precache, pre/post entity think) and player think (button changes) via RunThink.
+    { std::string(features::ServerGameSystemEvents),
+      { Signature("IGameSystem_InitAllSystems_pFirst"), SchemaField("CCSPlayerController", "m_hPlayerPawn"),
+        SchemaField("CBasePlayerController", "m_iConnected"), SchemaField("CBasePlayerPawn", "m_pMovementServices"),
+        SchemaField("CPlayer_MovementServices", "m_nButtons"), SchemaField("CInButtonState", "m_pButtonStates") } },
+    // ticket 08
+    { std::string(features::EntityOutputHooks), { Signature("CEntityIOOutput_FireOutputInternal") } },
+    { std::string(features::EntityAcceptInput), { Signature("CEntityInstance_AcceptInput") } },
+    { std::string(features::EntityAddIoEvent), { Signature("CEntitySystem_AddEntityIOEvent") } },
+    { std::string(features::EntityEmitSound), { Signature("CBaseEntity_EmitSoundFilter") } },
+    { std::string(features::EntityDispatchSpawn), { Signature("CBaseEntity_DispatchSpawn") } },
+    // ticket 11
+    { std::string(features::EntityTakeDamageHooks), { Signature("CBaseEntity_TakeDamageOld"), Offset("CBaseEntity_IsPlayerPawn") } },
 };
 
 bool Declared(const std::vector<BindingDeclaration>& bindings, std::string_view key)

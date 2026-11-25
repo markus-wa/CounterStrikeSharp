@@ -150,7 +150,13 @@ namespace CounterStrikeSharp.API.Core
             var subscriber = new CallbackSubscriber(handler, handler,
                 () => DeregisterEventHandler(name, handler, post));
 
-            NativeAPI.HookEvent(name, subscriber.GetInputArgument(), post);
+            // Game events disabled: the handler stays registered (deregistering still works) but never fires.
+            if (EngineFeatures.Current.CheckRegistration(EngineFeatureNames.EventsGameEvents, "Game event handler",
+                    Logger ?? Application.Instance.Logger))
+            {
+                NativeAPI.HookEvent(name, subscriber.GetInputArgument(), post);
+            }
+
             Handlers[handler] = subscriber;
         }
 
@@ -599,7 +605,12 @@ namespace CounterStrikeSharp.API.Core
             var subscriber = new CallbackSubscriber(handler, handler,
                 () => UnhookEntityOutput(classname, outputName, handler));
 
-            NativeAPI.HookEntityOutput(classname, outputName, subscriber.GetInputArgument(), mode);
+            // On a disabled Engine Feature the hook stays registered but never fires (logged once).
+            if (EngineFeatures.Current.CheckRegistration(EngineFeatureNames.EntityOutputHooks, "Entity output hook", Logger))
+            {
+                NativeAPI.HookEntityOutput(classname, outputName, subscriber.GetInputArgument(), mode);
+            }
+
             EntityOutputHooks[handler] = subscriber;
         }
 

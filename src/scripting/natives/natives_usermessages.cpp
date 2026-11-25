@@ -17,7 +17,7 @@
 #include "core/globals.h"
 #include "core/log.h"
 #include "core/managers/usermessage_manager.h"
-#include "igameeventsystem.h"
+#include "engine2/igameeventsystem.h"
 #include "scripting/autonative.h"
 
 #include "core/recipientfilters.h"
@@ -674,7 +674,7 @@ static void UserMessageFindMessageIdByName(ScriptContext& scriptContext)
         return;
     }
 
-    scriptContext.SetResult(message->GetNetMessageInfo()->m_MessageId);
+    scriptContext.SetResult(message->GetMessageId());
 }
 
 static void UserMessageCreate(ScriptContext& scriptContext)
@@ -738,16 +738,21 @@ static void UserMessageSend(ScriptContext& scriptContext)
 
     filter.AddRecipientsFromMask(message->GetRecipientMask() ? *message->GetRecipientMask() : 0);
 
-    // This is for calling send in a UM hook, if calling normal send using the UM instance from the UM hook, it will cause an inifinite
-    // loop, then crashing the server
-    static void (IGameEventSystem::*PostEventAbstract)(CSplitScreenSlot, bool, IRecipientFilter*, INetworkMessageInternal*,
-                                                       const CNetMessage*, unsigned long) = &IGameEventSystem::PostEventAbstract;
-
     if (message->IsManuallyAllocated())
+    {
         globals::gameEventSystem->PostEventAbstract(0, false, &filter, message->GetSerializableMessage(), message->GetProtobufMessage(), 0);
+    }
     else
-        SH_CALL(globals::gameEventSystem, PostEventAbstract)(0, false, &filter, message->GetSerializableMessage(),
-                                                             message->GetProtobufMessage(), 0);
+    {
+        // Bypass the exact virtual slot that UserMessageManager hooks. Calling
+        // the recipient-filter overload can dispatch back through that slot.
+        static void (IGameEventSystem::*PostEventAbstract)(CSplitScreenSlot, bool, int, const uint64*, NetMessageInfo_t*,
+                                                           const CNetMessage*, unsigned long, NetChannelBufType_t) =
+            &IGameEventSystem::PostEventAbstract;
+        KHook::CallOriginal(PostEventAbstract, globals::gameEventSystem, CSplitScreenSlot(0), false, ABSOLUTE_PLAYER_LIMIT,
+                            reinterpret_cast<const uint64*>(filter.GetRecipients().Base()), message->GetSerializableMessage(),
+                            message->GetProtobufMessage(), 0UL, filter.GetNetworkBufType());
+    }
 }
 
 static void UserMessageDelete(ScriptContext& scriptContext)
@@ -785,7 +790,7 @@ static void UserMessageGetMessageName(ScriptContext& scriptContext)
         return;
     }
 
-    scriptContext.SetResult(message->GetSerializableMessage()->GetUnscopedName());
+    scriptContext.SetResult(message->GetSerializableMessage()->GetName());
 }
 
 static void UserMessageGetMessageTypeName(ScriptContext& scriptContext)

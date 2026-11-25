@@ -31,7 +31,7 @@
 
 #include "core/timer_system.h"
 
-#include <public/eiface.h>
+#include <engine2/ivengineserver2.h>
 
 #include <algorithm>
 
@@ -62,26 +62,12 @@ TimerSystem::TimerSystem()
     m_last_ticked_time = 0.0f;
 }
 
-void TimerSystem::OnAllInitialized()
-{
-    m_on_tick_callback_ = globals::callbackManager.CreateCallback("OnTick");
-    on_map_end_callback = globals::callbackManager.CreateCallback("OnMapEnd");
-}
+void TimerSystem::OnAllInitialized() { m_on_tick_callback_ = globals::callbackManager.CreateCallback("OnTick"); }
 
-void TimerSystem::OnShutdown()
-{
-    globals::callbackManager.ReleaseCallback(m_on_tick_callback_);
-    globals::callbackManager.ReleaseCallback(on_map_end_callback);
-}
+void TimerSystem::OnShutdown() { globals::callbackManager.ReleaseCallback(m_on_tick_callback_); }
 
 void TimerSystem::OnLevelEnd()
 {
-    if (on_map_end_callback && on_map_end_callback->GetFunctionCount())
-    {
-        on_map_end_callback->ScriptContext().Reset();
-        on_map_end_callback->Execute();
-    }
-
     globals::timerSystem.RemoveMapChangeTimers();
 
     m_has_map_simulated = false;
@@ -119,13 +105,7 @@ void TimerSystem::OnGameFrame(bool simulating)
     m_last_ticked_time = globals::getGlobalVars()->curtime;
     m_has_map_ticked = true;
 
-    // Handle timer tick
-    if (timers::universal_time >= timers::timer_next_think)
-    {
-        RunFrame();
-
-        timers::timer_next_think = CalculateNextThink(timers::timer_next_think, 0.1f);
-    }
+    RunFrame();
 
     if (m_on_tick_callback_->GetFunctionCount())
     {
@@ -138,14 +118,11 @@ void TimerSystem::OnGameFrame(bool simulating)
 
 double TimerSystem::CalculateNextThink(double last_think_time, float interval)
 {
-    if (timers::universal_time - last_think_time - interval <= 0.1)
+    if (timers::universal_time - last_think_time - interval <= globals::engine_fixed_tick_interval)
     {
         return last_think_time + interval;
     }
-    else
-    {
-        return timers::universal_time + interval;
-    }
+    return timers::universal_time + interval;
 }
 
 void TimerSystem::RunFrame()
@@ -158,6 +135,9 @@ void TimerSystem::RunFrame()
             timer->m_in_exec = true;
             timer->m_callback->ScriptContext().Reset();
             timer->m_callback->Execute();
+
+            if (i >= static_cast<int>(m_once_off_timers.size()) || m_once_off_timers[i] != timer)
+                i = std::find(m_once_off_timers.begin(), m_once_off_timers.end(), timer) - m_once_off_timers.begin();
 
             m_once_off_timers.erase(m_once_off_timers.begin() + i);
             delete timer;
@@ -172,6 +152,9 @@ void TimerSystem::RunFrame()
             timer->m_in_exec = true;
             timer->m_callback->ScriptContext().Reset();
             timer->m_callback->Execute();
+
+            if (i >= static_cast<int>(m_repeat_timers.size()) || m_repeat_timers[i] != timer)
+                i = std::find(m_repeat_timers.begin(), m_repeat_timers.end(), timer) - m_repeat_timers.begin();
 
             if (timer->m_kill_me)
             {

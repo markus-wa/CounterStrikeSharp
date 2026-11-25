@@ -14,14 +14,14 @@
  *  along with VSP.NET.  If not, see <https://www.gnu.org/licenses/>. *
  */
 
-#include <eiface.h>
+#include <engine2/ivengineserver2.h>
 #include <networksystem/inetworkmessages.h>
 
 #include "core/log.h"
 #include "core/managers/con_command_manager.h"
 #include "core/managers/player_manager.h"
 #include "core/recipientfilters.h"
-#include "igameeventsystem.h"
+#include "engine2/igameeventsystem.h"
 #include "scripting/autonative.h"
 #include "scripting/callback_manager.h"
 #include "scripting/script_engine.h"
@@ -210,7 +210,7 @@ void ReplicateConVar(ScriptContext& script_context)
     auto name = script_context.GetArgument<const char*>(1);
     auto value = script_context.GetArgument<const char*>(2);
 
-    INetworkMessageInternal* pNetMsg = globals::networkMessages->FindNetworkMessagePartial("SetConVar");
+    NetMessageInfo_t* pNetMsg = globals::networkMessages->FindNetworkMessagePartial("SetConVar");
     auto msg = pNetMsg->AllocateMessage()->ToPB<CNETMsg_SetConVar>();
 
     CMsg_CVars_CVar* cvarMsg = msg->mutable_convars()->add_cvars();

@@ -11,17 +11,81 @@
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with CounterStrikeSharp.  If not, see <https://www.gnu.org/licenses/>. *
+ *  along with CounterStrikeSharp.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-#define private public
+#include <type_traits>
+
 #include "core/log.h"
 #include "scripting/autonative.h"
 #include "scripting/script_engine.h"
 
-#include <eiface.h>
+// ---- Flag setter compatible with various SDKs ----
+template <typename T>
+concept HasAddClear = requires(T* t, uint64_t f) {
+    t->AddFlags(f);
+    t->ClearFlags(f);
+};
+
+template <typename T>
+concept HasAddRemove = requires(T* t, uint64_t f) {
+    t->AddFlags(f);
+    t->RemoveFlags(f);
+};
+
+template <typename T>
+concept HasSetFlagBit = requires(T* t, uint64_t f) {
+    t->SetFlag(f, true);
+    t->SetFlag(f, false);
+};
+
+template <typename T> void SetAllFlagsCompat(T* data, uint64_t desired)
+{
+    uint64_t cur = data->GetFlags();
+    uint64_t add = desired & ~cur;
+    uint64_t rem = cur & ~desired;
+
+    if constexpr (HasAddClear<T>)
+    {
+        if (add) data->AddFlags(add);
+        if (rem) data->ClearFlags(rem);
+    }
+    else if constexpr (HasAddRemove<T>)
+    {
+        if (add) data->AddFlags(add);
+        if (rem) data->RemoveFlags(rem);
+    }
+    else if constexpr (HasSetFlagBit<T>)
+    {
+        // Fallback: set/clear bitwise
+        for (int i = 0; i < 64; i)
+        {
+            uint64_t bit = (1ULL << i);
+            bool want = (desired & bit) != 0;
+            data->SetFlag(bit, want);
+        }
+    }
+    else
+    {
+        static_assert(sizeof(T) == 0, "ConVarData hat keine passende Flags-API (Add/Clear/Remove/SetFlag).");
+    }
+}
+// ------------------------------------------------------
+
+// First STL/SPDLOG, then SDK with the hack – and clean up immediately afterwards
+#ifdef private
+#undef private
+#endif
+#ifdef protected
+#undef protected
+#endif
+#define private public
+#include <engine2/ivengineserver2.h>
 #include <convar.h>
 #undef private
+#ifdef protected
+#undef protected
+#endif
 
 namespace counterstrikesharp {
 
@@ -37,7 +101,7 @@ static void SetConvarFlags(ScriptContext& script_context)
     }
 
     auto flags = script_context.GetArgument<uint64_t>(1);
-    ref.GetConVarData()->m_nFlags = flags;
+    SetAllFlagsCompat(ref.GetConVarData(), flags);
 }
 
 static void GetConvarFlags(ScriptContext& script_context)
@@ -51,7 +115,7 @@ static void GetConvarFlags(ScriptContext& script_context)
         return;
     }
 
-    script_context.SetResult(ref.GetConVarData()->m_nFlags);
+    script_context.SetResult(ref.GetConVarData()->GetFlags());
 }
 
 static void GetConvarType(ScriptContext& script_context)
@@ -99,6 +163,13 @@ static void GetConvarHelpText(ScriptContext& script_context)
     }
 
     script_context.SetResult(ref.GetConVarData()->GetHelpText());
+}
+
+static void IsConvarValid(ScriptContext& script_context)
+{
+    auto convarAccessIndex = script_context.GetArgument<uint16>(0);
+    ConVarRefAbstract ref(convarAccessIndex);
+    script_context.SetResult(ref.IsValidRef() && ref.IsConVarDataValid() && ref.IsConVarDataAvailable());
 }
 
 static void GetConvarAccessIndexByName(ScriptContext& script_context)
@@ -268,6 +339,141 @@ static void GetConvarValue(ScriptContext& script_context)
     }
 }
 
+template <typename T>
+static void UpdateConvarBound(ScriptContext& script_context, ConVarData* data, CVValue_t* bound, bool minimum, const T& value)
+{
+    CVValue_t candidate(value);
+    CVValue_t clamped(value);
+    auto traits = data->TypeTraits();
+    // Check the opposite bound, component-wise for vectors/angles, before changing engine storage.
+    traits->Clamp(&clamped, minimum ? nullptr : data->MinValue(), minimum ? data->MaxValue() : nullptr);
+    if (!traits->Equal(&candidate, &clamped))
+    {
+        script_context.ThrowNativeError("Convar minimum must not exceed its maximum (and bounds must not contain NaN).");
+        return;
+    }
+
+    traits->Copy(bound, candidate);
+}
+
+template <typename T, bool Write>
+static void AccessTypedConvarBound(ScriptContext& script_context, ConVarData* data, CVValue_t* bound, bool minimum)
+{
+    if constexpr (Write)
+    {
+        if constexpr (std::is_arithmetic_v<T>)
+        {
+            UpdateConvarBound(script_context, data, bound, minimum, script_context.GetArgument<T>(3));
+        }
+        else
+        {
+            auto value = script_context.GetArgument<T*>(3);
+            if (!value)
+            {
+                script_context.ThrowNativeError("Convar bound must not be null.");
+                return;
+            }
+            UpdateConvarBound(script_context, data, bound, minimum, *value);
+        }
+    }
+    else
+    {
+        if constexpr (std::is_arithmetic_v<T>) script_context.SetResult(*reinterpret_cast<T*>(bound));
+        else
+            script_context.SetResult(reinterpret_cast<T*>(bound));
+    }
+}
+
+static ConVarData* GetConvarBoundData(ScriptContext& script_context)
+{
+    auto index = script_context.GetArgument<uint16>(0);
+    auto cvar = ConVarRefAbstract(index);
+    if (!cvar.IsValidRef() || !cvar.IsConVarDataValid())
+    {
+        script_context.ThrowNativeError("Invalid convar access index or data: %d.", index);
+        return nullptr;
+    }
+
+    auto expectedType = script_context.GetArgument<EConVarType>(2);
+    if (cvar.GetType() != expectedType)
+    {
+        script_context.ThrowNativeError("Convar type does not match the requested bound type.");
+        return nullptr;
+    }
+
+    return cvar.GetConVarData();
+}
+
+static void HasConvarBound(ScriptContext& script_context)
+{
+    auto data = GetConvarBoundData(script_context);
+    if (!data) return;
+
+    auto minimum = script_context.GetArgument<bool>(1);
+    script_context.SetResult(minimum ? data->HasMinValue() : data->HasMaxValue());
+}
+
+template <bool Write> static void AccessConvarBound(ScriptContext& script_context)
+{
+    auto data = GetConvarBoundData(script_context);
+    if (!data) return;
+
+    auto minimum = script_context.GetArgument<bool>(1);
+    auto bound = minimum ? data->MinValue() : data->MaxValue();
+    if (!bound)
+    {
+        script_context.ThrowNativeError("Convar has no %s bound. Specify it when creating the convar.", minimum ? "minimum" : "maximum");
+        return;
+    }
+
+    // Only modify existing engine-owned storage, avoiding allocations with a different lifetime to the ConVar.
+    switch (data->GetType())
+    {
+        case EConVarType_Bool:
+            AccessTypedConvarBound<bool, Write>(script_context, data, bound, minimum);
+            break;
+        case EConVarType_Int16:
+            AccessTypedConvarBound<int16, Write>(script_context, data, bound, minimum);
+            break;
+        case EConVarType_UInt16:
+            AccessTypedConvarBound<uint16, Write>(script_context, data, bound, minimum);
+            break;
+        case EConVarType_Int32:
+            AccessTypedConvarBound<int32, Write>(script_context, data, bound, minimum);
+            break;
+        case EConVarType_UInt32:
+            AccessTypedConvarBound<uint32, Write>(script_context, data, bound, minimum);
+            break;
+        case EConVarType_Int64:
+            AccessTypedConvarBound<int64, Write>(script_context, data, bound, minimum);
+            break;
+        case EConVarType_UInt64:
+            AccessTypedConvarBound<uint64, Write>(script_context, data, bound, minimum);
+            break;
+        case EConVarType_Float32:
+            AccessTypedConvarBound<float32, Write>(script_context, data, bound, minimum);
+            break;
+        case EConVarType_Float64:
+            AccessTypedConvarBound<float64, Write>(script_context, data, bound, minimum);
+            break;
+        case EConVarType_Vector2:
+            AccessTypedConvarBound<Vector2D, Write>(script_context, data, bound, minimum);
+            break;
+        case EConVarType_Vector3:
+            AccessTypedConvarBound<Vector, Write>(script_context, data, bound, minimum);
+            break;
+        case EConVarType_Vector4:
+            AccessTypedConvarBound<Vector4D, Write>(script_context, data, bound, minimum);
+            break;
+        case EConVarType_Qangle:
+            AccessTypedConvarBound<QAngle, Write>(script_context, data, bound, minimum);
+            break;
+        default:
+            script_context.ThrowNativeError("Bounds are not supported for convar type %d.", data->GetType());
+            break;
+    }
+}
+
 static void GetConvarValueAddress(ScriptContext& script_context)
 {
     auto convarAccessIndex = script_context.GetArgument<uint16>(0);
@@ -407,8 +613,6 @@ static void CreateConVar(ScriptContext& script_context)
     auto hasMin = script_context.GetArgument<bool>(4);
     auto hasMax = script_context.GetArgument<bool>(5);
 
-    // default, min, max is 6,7,8
-
     ConVarRefAbstract cvar(name);
     if (cvar.IsValidRef())
     {
@@ -416,7 +620,7 @@ static void CreateConVar(ScriptContext& script_context)
         return;
     }
 
-    uint16 createdConVarAccessIndex = 0;
+    uint16 createdConVarAccessIndex = 0xFFFF;
     void* createdConVarPtr = nullptr;
 
     switch (type)
@@ -531,8 +735,12 @@ REGISTER_NATIVES(convars, {
     ScriptEngine::RegisterNativeHandler("GET_CONVAR_NAME", GetConvarName);
     ScriptEngine::RegisterNativeHandler("GET_CONVAR_HELP_TEXT", GetConvarHelpText);
     ScriptEngine::RegisterNativeHandler("GET_CONVAR_ACCESS_INDEX_BY_NAME", GetConvarAccessIndexByName);
+    ScriptEngine::RegisterNativeHandler("IS_CONVAR_VALID", IsConvarValid);
     ScriptEngine::RegisterNativeHandler("GET_CONVAR_VALUE", GetConvarValue);
     ScriptEngine::RegisterNativeHandler("GET_CONVAR_VALUE_ADDRESS", GetConvarValueAddress);
+    ScriptEngine::RegisterNativeHandler("HAS_CONVAR_BOUND", HasConvarBound);
+    ScriptEngine::RegisterNativeHandler("GET_CONVAR_BOUND", AccessConvarBound<false>);
+    ScriptEngine::RegisterNativeHandler("SET_CONVAR_BOUND", AccessConvarBound<true>);
     ScriptEngine::RegisterNativeHandler("GET_CONVAR_VALUE_AS_STRING", GetConvarValueAsString);
     ScriptEngine::RegisterNativeHandler("SET_CONVAR_VALUE_AS_STRING", SetConvarValueAsString);
     ScriptEngine::RegisterNativeHandler("SET_CONVAR_VALUE", SetConvarValue);

@@ -19,10 +19,13 @@
 #include <map>
 #include <vector>
 
+#include "core/function.h"
 #include "core/globals.h"
+#include "core/hooks.h"
 #include "core/global_listener.h"
 #include "scripting/script_engine.h"
-#include "entitysystem.h"
+#include <gameentitysystem.h>
+#include <soundflags.h>
 #include "scripting/callback_manager.h"
 #include "core/recipientfilters.h"
 
@@ -30,6 +33,8 @@
 
 #include "vprof.h"
 
+class CTakeDamageResult;
+class CTakeDamageInfo;
 class CCheckTransmitInfoHack
 {
   public:
@@ -68,6 +73,9 @@ class CCheckTransmitInfoList
 
 class EntityManager : public GlobalClass
 {
+  private:
+    HookSet m_hooks;
+
     friend CEntityListener;
 
   public:
@@ -79,20 +87,28 @@ class EntityManager : public GlobalClass
     void UnhookEntityOutput(const char* szClassname, const char* szOutput, CallbackT fnCallback, HookMode mode);
     CEntityListener entityListener;
     std::map<OutputKey_t, CallbackPair*> m_pHookMap;
+    bool Hook_OnTakeDamage_Alive_Pre(CBaseEntity* entity, CTakeDamageInfo* info, CTakeDamageResult* pResult);
+    void Hook_OnTakeDamage_Alive_Post(CBaseEntity* entity, CTakeDamageInfo* info, CTakeDamageResult* pResult);
+    ValveFunction* Func_OnTakeDamage;
 
   private:
-    void CheckTransmit(CCheckTransmitInfoHack** ppInfoList,
-                       uint32_t infoCount,
-                       CBitVec<16384>& unionTransmitEdicts1,
-                       CBitVec<16384>& unionTransmitEdicts2,
-                       const Entity2Networkable_t** pNetworkables,
-                       const uint16* pEntityIndicies,
-                       uint32_t nEntities);
+    KHook::Return<void> CheckTransmit(ISource2GameEntities* hookThis,
+                                      CCheckTransmitInfoHack** ppInfoList,
+                                      uint32_t infoCount,
+                                      CBitVec<16384>& unionTransmitEdicts1,
+                                      CBitVec<16384>& unionTransmitEdicts2,
+                                      const Entity2Networkable_t** pNetworkables,
+                                      const uint16* pEntityIndicies,
+                                      uint32_t nEntities);
 
     ScriptCallback* on_entity_spawned_callback;
     ScriptCallback* on_entity_created_callback;
     ScriptCallback* on_entity_deleted_callback;
     ScriptCallback* on_entity_parent_changed_callback;
+    ScriptCallback* on_entity_take_damage_pre_callback;
+    ScriptCallback* on_entity_take_damage_post_callback;
+    ScriptCallback* on_player_take_damage_pre_callback;
+    ScriptCallback* on_player_take_damage_post_callback;
     ScriptCallback* check_transmit;
 
     std::string m_profile_name;
@@ -146,15 +162,20 @@ class CEntityIOOutput
 typedef void (*FireOutputInternal)(
     CEntityIOOutput* const, CEntityInstance*, CEntityInstance*, const CVariant* const, float flDelay, void* unk1, char* unk2);
 
-static void DetourFireOutputInternal(CEntityIOOutput* const pThis,
-                                     CEntityInstance* pActivator,
-                                     CEntityInstance* pCaller,
-                                     const CVariant* const value,
-                                     float flDelay,
-                                     void* unk1,
-                                     char* unk2);
+static KHook::Return<void> DetourFireOutputInternal(CEntityIOOutput* const pThis,
+                                                    CEntityInstance* pActivator,
+                                                    CEntityInstance* pCaller,
+                                                    const CVariant* const value,
+                                                    float flDelay,
+                                                    void* unk1,
+                                                    char* unk2);
 
 static FireOutputInternal m_pFireOutputInternal = nullptr;
+
+inline void (*CBaseEntity_DispatchSpawn)(void* pEntity, CEntityKeyValues* pKeyValues);
+
+inline int64 (*CBaseEntity_TakeDamageOld)(CBaseEntity* pThis, CTakeDamageInfo* pInfo, CTakeDamageResult* pResult);
+static int64 DetourCBaseEntity_TakeDamageOld(CBaseEntity* pThis, CTakeDamageInfo* pInfo, CTakeDamageResult* pResult);
 
 // Do it in here because i didn't found a good place to do this
 inline void (*CEntityInstance_AcceptInput)(CEntityInstance* pThis,
@@ -172,7 +193,6 @@ inline void (*CEntitySystem_AddEntityIOEvent)(CEntitySystem* pEntitySystem,
                                               CEntityInstance* pCaller,
                                               variant_t* value,
                                               float delay,
-                                              int nOutputID,
                                               void*,
                                               void*);
 

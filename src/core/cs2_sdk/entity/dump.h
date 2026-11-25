@@ -1,7 +1,11 @@
 #include "core/cs2_sdk/schema.h"
-#include "public/variant.h"
+#include "core/gameconfig.h"
+#include "core/globals.h"
+#include "entity2/variant.h"
 #include "entity2/entitysystem.h"
 #include "game/shared/ehandle.h"
+#include "gametrace.h"
+#include "mathlib/transform.h"
 
 class CGameSceneNode;
 class CCSPlayerPawn;
@@ -79,11 +83,6 @@ enum class EntityPlatformTypes_t : uint8
     ENTITY_PLATFORM_PLAYER_IGNORES_YAW = 2,
 };
 
-class CEntityIOOutput
-{
-    DECLARE_SCHEMA_CLASS(CEntityIOOutput)
-};
-
 class CNetworkVelocityVector
 {
     DECLARE_SCHEMA_CLASS(CNetworkVelocityVector)
@@ -149,7 +148,7 @@ class CBaseEntity : public CEntityInstance
     SCHEMA_FIELD(uint32, m_spawnflags)
     SCHEMA_FIELD(GameTick_t, m_nNextThinkTick)
     SCHEMA_FIELD(int32, m_nSimulationTick)
-    SCHEMA_FIELD(CEntityIOOutput, m_OnKilled)
+    SCHEMA_FIELD_POINTER(CEntityIOOutput, m_OnKilled)
     SCHEMA_FIELD(uint32, m_fFlags)
     SCHEMA_FIELD(Vector, m_vecAbsVelocity)
     SCHEMA_FIELD(CNetworkVelocityVector, m_vecVelocity)
@@ -170,10 +169,10 @@ class CBaseEntity : public CEntityInstance
     SCHEMA_FIELD(bool, m_bDisableLowViolence)
     SCHEMA_FIELD(uint8, m_nWaterType)
     SCHEMA_FIELD(int32, m_iEFlags)
-    SCHEMA_FIELD(CEntityIOOutput, m_OnUser1)
-    SCHEMA_FIELD(CEntityIOOutput, m_OnUser2)
-    SCHEMA_FIELD(CEntityIOOutput, m_OnUser3)
-    SCHEMA_FIELD(CEntityIOOutput, m_OnUser4)
+    SCHEMA_FIELD_POINTER(CEntityIOOutput, m_OnUser1)
+    SCHEMA_FIELD_POINTER(CEntityIOOutput, m_OnUser2)
+    SCHEMA_FIELD_POINTER(CEntityIOOutput, m_OnUser3)
+    SCHEMA_FIELD_POINTER(CEntityIOOutput, m_OnUser4)
     SCHEMA_FIELD(int32, m_iInitialTeamNum)
     SCHEMA_FIELD(GameTime_t, m_flNavIgnoreUntilTime)
     SCHEMA_FIELD(QAngle, m_vecAngVelocity)
@@ -184,6 +183,13 @@ class CBaseEntity : public CEntityInstance
     SCHEMA_FIELD(float32, m_flLocalTime)
     SCHEMA_FIELD(float32, m_flVPhysicsUpdateLocalTime)
     SCHEMA_FIELD(BloodType, m_nBloodType)
+
+  public:
+    bool IsPawn()
+    {
+        static int offset = counterstrikesharp::globals::gameConfig->GetOffset("CBaseEntity_IsPlayerPawn");
+        return CALL_VIRTUAL(bool, offset, this);
+    }
 };
 
 enum class PlayerConnectedState : int32
@@ -443,7 +449,7 @@ class CBaseModelEntity : public CBaseEntity
 {
     DECLARE_SCHEMA_CLASS(CBaseModelEntity)
 
-    SCHEMA_FIELD(CHitboxComponent, m_CHitboxComponent)
+    SCHEMA_FIELD_POINTER(CHitboxComponent, m_CHitboxComponent)
     SCHEMA_FIELD(HitGroup_t, m_nDestructiblePartInitialStateDestructed0)
     SCHEMA_FIELD(HitGroup_t, m_nDestructiblePartInitialStateDestructed1)
     SCHEMA_FIELD(HitGroup_t, m_nDestructiblePartInitialStateDestructed2)
@@ -452,7 +458,7 @@ class CBaseModelEntity : public CBaseEntity
     SCHEMA_FIELD(int32, m_nLastHitDestructiblePartIndex)
     SCHEMA_FIELD(HitGroup_t, m_LastHitGroup)
     SCHEMA_FIELD(GameTime_t, m_flDissolveStartTime)
-    SCHEMA_FIELD(CEntityIOOutput, m_OnIgnite)
+    SCHEMA_FIELD_POINTER(CEntityIOOutput, m_OnIgnite)
     SCHEMA_FIELD(RenderMode_t, m_nRenderMode)
     SCHEMA_FIELD(RenderFx_t, m_nRenderFX)
     SCHEMA_FIELD(bool, m_bAllowFadeInView)
@@ -736,7 +742,7 @@ class CCSPlayerPawnBase : public CBasePlayerPawn
 {
     DECLARE_SCHEMA_CLASS(CCSPlayerPawnBase)
 
-    SCHEMA_FIELD(CTouchExpansionComponent, m_CTouchExpansionComponent)
+    SCHEMA_FIELD_POINTER(CTouchExpansionComponent, m_CTouchExpansionComponent)
     SCHEMA_FIELD(GameTime_t, m_blindUntilTime)
     SCHEMA_FIELD(GameTime_t, m_blindStartTime)
     SCHEMA_FIELD(CSPlayerState, m_iPlayerState)
@@ -1026,4 +1032,82 @@ class CGameSceneNode
     SCHEMA_FIELD(float32, m_flZOffset)
     SCHEMA_FIELD(float32, m_flClientLocalScale)
     SCHEMA_FIELD(Vector, m_vRenderOrigin)
+};
+
+enum class DamageTypes_t : uint32
+{
+    DMG_GENERIC = 0,
+    DMG_CRUSH = 1, // (1 << 0)
+    DMG_BULLET = 2, // (1 << 1)
+    DMG_SLASH = 4, // (1 << 2)
+    DMG_BURN = 8, // (1 << 3)
+    DMG_VEHICLE = 16, // (1 << 4)
+    DMG_FALL = 32, // (1 << 5)
+    DMG_BLAST = 64, // (1 << 6)
+    DMG_CLUB = 128, // (1 << 7)
+    DMG_SHOCK = 256, // (1 << 8)
+    DMG_SONIC = 512, // (1 << 9)
+    DMG_ENERGYBEAM = 1024, // (1 << 10)
+    DMG_BUCKSHOT = 2048, // (1 << 11)
+    DMG_DROWN = 16384, // (1 << 14)
+    DMG_POISON = 32768, // (1 << 15)
+    DMG_RADIATION = 65536, // (1 << 16)
+    DMG_DROWNRECOVER = 131072, // (1 << 17)
+    DMG_ACID = 262144, // (1 << 18)
+    DMG_PHYSGUN = 1048576, // (1 << 20)
+    DMG_DISSOLVE = 2097152, // (1 << 21)
+    DMG_BLAST_SURFACE = 4194304, // (1 << 22)
+    DMG_LASTGENERICFLAG = 4194304, // (1 << 22)
+    DMG_HEADSHOT = 8388608, // (1 << 23)
+};
+
+class AmmoIndex_t
+{
+    DECLARE_SCHEMA_CLASS(AmmoIndex_t)
+
+    SCHEMA_FIELD(int8, m_Value)
+};
+
+class CTakeDamageInfo
+{
+    DECLARE_SCHEMA_CLASS(CTakeDamageInfo)
+
+  public:
+    SCHEMA_FIELD(Vector, m_vecDamageForce)
+    SCHEMA_FIELD(Vector, m_vecDamagePosition)
+    SCHEMA_FIELD(Vector, m_vecReportedPosition)
+    SCHEMA_FIELD(Vector, m_vecDamageDirection)
+    SCHEMA_FIELD(CHandle<CBaseEntity>, m_hInflictor)
+    SCHEMA_FIELD(CHandle<CBaseEntity>, m_hAttacker)
+    SCHEMA_FIELD(CHandle<CBaseEntity>, m_hAbility)
+    SCHEMA_FIELD(float32, m_flDamage)
+    SCHEMA_FIELD(float32, m_flTotalledDamage)
+    SCHEMA_FIELD(DamageTypes_t, m_bitsDamageType)
+    SCHEMA_FIELD(int32, m_iDamageCustom)
+    SCHEMA_FIELD(AmmoIndex_t, m_iAmmoType)
+    SCHEMA_FIELD(float32, m_flOriginalDamage)
+    SCHEMA_FIELD(bool, m_bShouldBleed)
+    SCHEMA_FIELD(bool, m_bShouldSpark)
+    SCHEMA_FIELD(TakeDamageFlags_t, m_nDamageFlags)
+    // SCHEMA_FIELD(CGlobalSymbol, m_sDamageSourceName)
+    SCHEMA_FIELD(HitGroup_t, m_iHitGroupId)
+    SCHEMA_FIELD(int32, m_nNumObjectsPenetrated)
+    SCHEMA_FIELD(float32, m_flFriendlyFireDamageReductionRatio)
+    // SCHEMA_FIELD(CUtlVector<DestructibleHitGroupToDestroy_t>, m_nDestructibleHitGroupsToForceDestroy)
+    SCHEMA_FIELD(bool, m_bInTakeDamageFlow)
+};
+
+class CTakeDamageResult
+{
+    DECLARE_SCHEMA_CLASS(CTakeDamageResult)
+
+  public:
+    SCHEMA_FIELD(CTakeDamageInfo*, m_pOriginatingInfo)
+    SCHEMA_FIELD(int32, m_nHealthLost)
+    SCHEMA_FIELD(int32, m_nHealthBefore)
+    SCHEMA_FIELD(int32, m_nDamageDealt)
+    SCHEMA_FIELD(float32, m_flPreModifiedDamage)
+    SCHEMA_FIELD(int32, m_nTotalledHealthLost)
+    SCHEMA_FIELD(int32, m_nTotalledDamageDealt)
+    SCHEMA_FIELD(bool, m_bWasDamageSuppressed)
 };

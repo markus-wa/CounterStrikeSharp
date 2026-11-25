@@ -24,6 +24,8 @@ set(LIBRARIES_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libraries)
 set(SOURCESDK_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libraries/hl2sdk-cs2)
 set(METAMOD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libraries/metamod-source)
 
+include("${CMAKE_CURRENT_LIST_DIR}/patch_hl2sdk.cmake")
+
 set(SOURCESDK ${SOURCESDK_DIR}/${BRANCH})
 set(SOURCESDK_LIB ${SOURCESDK}/lib)
 
@@ -60,13 +62,11 @@ include_directories(
     ${SOURCESDK}/public/game/server
     ${SOURCESDK}/public/schemasystem
     ${METAMOD_DIR}/core
-    ${METAMOD_DIR}/core/sourcehook
+    ${METAMOD_DIR}/third_party/khook/include
     libraries/dyncall/dynload
     libraries/dyncall/dyncall
     libraries/spdlog/include
     libraries/tl
-    libraries/funchook/include
-    libraries/DynoHook/src
     libraries/moodycamel
     libraries
 )

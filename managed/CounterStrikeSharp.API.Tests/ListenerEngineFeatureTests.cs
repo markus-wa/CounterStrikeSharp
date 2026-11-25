@@ -34,6 +34,36 @@ public class ListenerEngineFeatureTests
         return new EngineFeatureSet(report, []);
     }
 
+    [Theory]
+    [InlineData("OnServerPrecacheResources")]
+    [InlineData("OnServerPreEntityThink")]
+    [InlineData("OnServerPostEntityThink")]
+    [InlineData("OnPlayerButtonsChanged")]
+    public void GameSystemListenerOnDisabledGameSystemEventsWarnsOnce(string listenerName)
+    {
+        var set = SetWithGameSystemEvents(resolved: false);
+        var logger = new CapturingLogger();
+
+        Assert.False(ListenerEngineFeatures.CheckRegistration(set, listenerName, logger));
+        Assert.False(ListenerEngineFeatures.CheckRegistration(set, listenerName, logger));
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warning, entry.Level);
+        Assert.Equal(
+            $"{listenerName} listener registered on disabled cssharp.server/game-system-events disabled " +
+            "(IGameSystem_InitAllSystems_pFirst: not found); it will never fire",
+            entry.Message);
+    }
+
+    [Fact]
+    public void GameSystemListenerOnAvailableGameSystemEventsIsSilent()
+    {
+        var logger = new CapturingLogger();
+
+        Assert.True(ListenerEngineFeatures.CheckRegistration(SetWithGameSystemEvents(resolved: true), "OnServerPreEntityThink", logger));
+        Assert.Empty(logger.Entries);
+    }
+
     [Fact]
     public void ListenerNotBackedByAnEngineFeatureIsUnaffected()
     {

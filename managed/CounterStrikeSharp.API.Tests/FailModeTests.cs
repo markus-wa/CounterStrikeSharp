@@ -5,6 +5,7 @@ using CounterStrikeSharp.API.Core.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using System.Text.Json;
 
 namespace CounterStrikeSharp.API.Tests;
 
@@ -35,8 +36,8 @@ public class FailModeTests : IDisposable
         new("cssharp.chat/client-print", [BindingDeclaration.Signature("ClientPrint")]);
 
     private static BindingResult HostSay(bool resolved) =>
-        new("Host_Say", BindingKind.Signature, resolved, resolved ? BindingFailureReason.None : BindingFailureReason.NotFound, resolved ? 1 : 0,
-            resolved ? 0x1000 : 0, 0, "server");
+        new("Host_Say", BindingKind.Signature, resolved, resolved ? BindingFailureReason.None : BindingFailureReason.NotFound,
+            resolved ? 1 : 0, resolved ? 0x1000 : 0, 0, "server");
 
     private static BindingResult ClientPrintResolved() =>
         new("ClientPrint", BindingKind.Signature, true, BindingFailureReason.None, 1, 0x9000, 0, "server");
@@ -46,25 +47,54 @@ public class FailModeTests : IDisposable
 
     // --- core.json ---
 
-    [Fact]
-    public void ExistingConfigsWithoutTheKeysKeepTodaysBehaviour()
+    // Loads core.json with the given content, as CounterStrikeSharp does at startup.
+    private static void LoadCoreConfig(string json, ILogger<CoreConfig>? logger = null)
     {
         var directory = Directory.CreateTempSubdirectory();
         try
         {
-            File.WriteAllText(Path.Join(directory.FullName, "core.json"), """{ "PublicChatTrigger": [ "!" ], "ServerLanguage": "en" }""");
+            File.WriteAllText(Path.Join(directory.FullName, "core.json"), json);
             var host = new Mock<IScriptHostConfiguration>();
             host.Setup(h => h.ConfigsPath).Returns(directory.FullName);
 
-            new CoreConfig(host.Object, Mock.Of<ICommandManager>(), NullLogger<CoreConfig>.Instance).Load();
-
-            Assert.Equal(FailMode.Disable, CoreConfig.FailMode);
-            Assert.Equal(SchemaMissMode.Warn, CoreConfig.SchemaMissMode);
+            new CoreConfig(host.Object, Mock.Of<ICommandManager>(), logger ?? NullLogger<CoreConfig>.Instance).Load();
         }
         finally
         {
             directory.Delete(true);
         }
+    }
+
+    [Fact]
+    public void ExistingConfigsWithoutTheKeysKeepTodaysBehaviour()
+    {
+        LoadCoreConfig("""{ "PublicChatTrigger": [ "!" ], "ServerLanguage": "en" }""");
+
+        Assert.Equal(FailMode.Disable, CoreConfig.FailMode);
+        Assert.Equal(SchemaMissMode.Warn, CoreConfig.SchemaMissMode);
+    }
+
+    [Fact]
+    public void TheKeysAreReadFromCoreJson()
+    {
+        LoadCoreConfig("""{ "FailMode": "crash", "SchemaMissMode": "throw" }""");
+
+        Assert.Equal(FailMode.Crash, CoreConfig.FailMode);
+        Assert.Equal(SchemaMissMode.Throw, CoreConfig.SchemaMissMode);
+    }
+
+    [Fact]
+    public void AWrongTypeFallsBackForThatKeyOnlyAndKeepsTheRestOfTheFile()
+    {
+        var logger = new CapturingLogger<CoreConfig>();
+
+        LoadCoreConfig("""{ "FailMode": 1, "SchemaMissMode": "throw", "PluginHotReloadEnabled": false }""", logger);
+
+        Assert.Equal(FailMode.Disable, CoreConfig.FailMode);
+        Assert.Equal(SchemaMissMode.Throw, CoreConfig.SchemaMissMode);
+        Assert.False(CoreConfig.PluginHotReloadEnabled);
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("FailMode 1 is not one of"));
+        LoadCoreConfig("{}");
     }
 
     [Theory]
@@ -95,7 +125,7 @@ public class FailModeTests : IDisposable
     [InlineData("fail")]
     public void AnUnknownModeFallsBackToTheDefaultForThatKeyOnlyWithAWarning(string value)
     {
-        CoreConfig.ApplyModes(new CoreConfigData { FailMode = value, SchemaMissMode = "throw" }, _logger);
+        CoreConfig.ApplyModes(Data($$"""{ "FailMode": "{{value}}", "SchemaMissMode": "throw" }"""), _logger);
 
         Assert.Equal(FailMode.Disable, CoreConfig.FailMode);
         Assert.Equal(SchemaMissMode.Throw, CoreConfig.SchemaMissMode);
@@ -104,6 +134,8 @@ public class FailModeTests : IDisposable
         Assert.Contains($"FailMode \"{value}\"", warning.Message);
         Assert.Contains("\"disable\", \"crash\"", warning.Message);
     }
+
+    private static CoreConfigData Data(string json) => JsonSerializer.Deserialize<CoreConfigData>(json)!;
 
     // --- FailMode ---
 
@@ -129,7 +161,8 @@ public class FailModeTests : IDisposable
         var fatal = Assert.Single(_logger.Entries);
         Assert.Equal(LogLevel.Critical, fatal.Level);
         Assert.Equal(
-            "FailMode is crash and 1 of 2 core Engine Features is disabled on build 1.42.0.1/2000950, stopping the server:\n" +
+            "FailMode is crash and 1 of 2 core Engine Features is disabled on build 1.42.0.1/2000950, " +
+            "stopping the server:\n" +
             "  cssharp.chat/say-hooks disabled (Host_Say: not found)", fatal.Message);
     }
 
@@ -153,7 +186,9 @@ public class FailModeTests : IDisposable
         Assert.Equal([LogLevel.Critical, LogLevel.Error], _logger.Entries.Select(e => e.Level));
     }
 
-    private sealed class CapturingLogger : ILogger
+    private sealed class CapturingLogger<T> : CapturingLogger, ILogger<T>;
+
+    private class CapturingLogger : ILogger
     {
         public List<(LogLevel Level, string Message)> Entries { get; } = new();
 

@@ -36,6 +36,18 @@ _Avoid_: gamedata status, binding state
 An Engine Feature a plugin declares it cannot run without; if it is disabled, that plugin does not load.
 _Avoid_: dependency (ambiguous with plugin dependencies)
 
+**Gamedata Feed**:
+The signed, build-keyed source of Gamedata that CounterStrikeSharp fetches at boot: an index signed by the maintainers, listing one Gamedata Snapshot per CS2 build and OS.
+_Avoid_: auto-updater, CDN, gamedata server
+
+**Gamedata Snapshot**:
+The complete Gamedata for one CS2 build (by `SourceRevision`) and one OS, as published in the Gamedata Feed. Immutable; never a delta.
+_Avoid_: gamedata update, patch
+
+**Kill Switch**:
+A deliberate entry in the Gamedata Feed that disables one Binding (blank value) or one Engine Feature (by id, with a reason) on a build, so a known crash becomes "feature off" without a release.
+_Avoid_: blacklist, disable flag
+
 **Game update**:
 A new CS2 build shipped by Valve. It may move or remove things Bindings point at.
 _Avoid_: patch (ambiguous with binary patches)

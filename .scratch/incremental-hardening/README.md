@@ -88,6 +88,31 @@ Planning workspace for making CounterStrikeSharp survive CS2 game updates with f
 - Later: 13 Windows Proxy (should-follow), 14 CI jobs (needs spec C I7), 15 server_valve spike, 16 post RFC (human), 17 promote Proxy Mode (human).
 - Independent of specs A/B except 01, which spec A's resolver shares.
 
+## Decisions (spec C grilling, signed feed + CI per build, 2026-11-26)
+
+- **Feed and hosting.** The fork owns the feed, in a separate data repo that is the only place Gamedata is edited; it may be upstreamed later. The bundled `gamedata.json` is generated from the data repo at release, stamped with `sourceRevision`. Upstream fixes come in as diff PRs on each upstream sync. Host: GitHub Pages on a custom domain with HTTPS enforcement off; spike first, R2 as fallback; the domain is a human step.
+- **Trust (ADR-0006).** Ed25519 (Monocypher) over the raw index bytes, verified before parse; sha256 per snapshot; `seq` high-water mark plus a release floor; hard-capped plain-HTTP client with no TLS. Keys: the CI key as a protected-environment secret, plus an offline age-encrypted backup key, both compiled in. Operator keys replace the built-in ones. The goal is "no obvious gaps", not maximum hardening: root delegation, expiry, mirrors, out-of-process HTTPS and the .NET refresher go to the backlog.
+- **Why upstream has no HTTPS or Linux support:** HTTPS was a packaging accident (#929/#930: missing `libssl.so.1.1`). Linux was disabled with no reason recorded (1f30e561). Signing was never discussed.
+- **Client.**
+  - The feed is on by default on both OSes in the fork; the upstream proposal would be opt-in.
+  - Gamedata is keyed by `steam.inf` `SourceRevision`.
+  - Fetch at boot with a 10 s budget. Selection: the exact build first, otherwise the newest of cache and bundled (carried forward). Never block boot.
+  - Apply at boot only. A 15-minute poll logs a restart notice and fires `OnGamedataUpdateAvailable`; CounterStrikeSharp never auto-restarts.
+  - The cache keeps the last 20 builds. Only core Gamedata is in scope.
+  - New `GamedataFeed*` keys; `AutoUpdate*` is deprecated, and the legacy updater and `gamedata.etag` are removed.
+- **Kill Switch.** It works per Binding (a blank value gives `DisabledByGamedata`) or per Engine Feature (a `disabledEngineFeatures` list). Kill Switches carry forward. `FailMode: crash` applies. `ForceEnableEngineFeatures` lets operators force a feature back on, with a loud warning.
+- **CI (I7).**
+  - The PoC archiver triggers CI. CI runs on Linux only, on the laptop as a stopgap, with Markus as named owner.
+  - It boots both the latest release and `main`, collects the Resolution Report, and runs the xUnit tests and spec B's generator.
+  - It opens a data-repo PR with the report diff, even when nothing changed. A human merges; there is no auto-publish. PR only for notifications; Discord later.
+- **Seams.** One new seam, the Gamedata Source, with an injected transport. The resolver and the end-to-end harness are existing seams. Publisher: a Python script in the data repo plus a cross-implementation test.
+
+## Spec C tiers
+
+- Must: 01 prefactor, 02 hosting spike (human) → 03 signed feed tracer, 06 Kill Switch (base; 06 needs only spec A) → 04, 05, 07, 08 (add-ons) → 09 keys, environment and domain (human), 10 bundled from data repo, 11 CI tracer → 12 CI generator and `main` check.
+- Later: 13 restart notice and event, 14 upstream intake, 15 upstream note.
+- External: 11 needs the PoC archiver's new-build event; 12 needs spec B 04.
+
 ## Spec E candidate: tier0 at runtime + struct checks (2026-11-25)
 
 - Upstream-note alignment Q2. A–C leave 329 outage hours, all from tier0 link breaks and hard-coded struct layouts. Hand estimate: both together → ~147 h (Metamod floor); with D → near 0. Not modelled.
@@ -104,6 +129,6 @@ Planning workspace for making CounterStrikeSharp survive CS2 game updates with f
 2. Three specs, each `/to-spec` → `/to-tickets`:
    - `.scratch/hardening-a-fail-soft/`: I1 sig uniqueness, I3 schema miss → error, I2 per-feature failure + capability flags.
    - `.scratch/hardening-b-boot-verify/`: I4 Vtable Checks with Heal, I5 Slot Bindings (hooks + IVEngineServer2/ICvar calls + entity offsets), generator.
-   - `.scratch/hardening-c-fast-fix/`: I6 signed build-keyed updater, I7 CI per build. Not specced yet; collected inputs (kill switch, Linux updater, per-build storage, C4 scope) in `inputs.md`.
+   - `.scratch/hardening-c-fast-fix/`: I6 signed build-keyed Gamedata Feed, I7 CI per build (`spec.md`, ADR-0006, 15 tickets).
    - `.scratch/hardening-d-own-loader/`: opt-in Proxy Mode (own loader) under Metamod (ADR-0005).
 3. `/implement-spec` or `/implement` per ticket.

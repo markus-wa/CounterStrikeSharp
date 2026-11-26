@@ -25,6 +25,9 @@
 #include "core/gameconfig_updater.h"
 #include "core/global_listener.h"
 #include "core/log.h"
+#include "core/slot_binding_keys.h"
+#include "core/slot_hooks.h"
+#include "core/verified_cvar.h"
 #include "core/managers/entity_manager.h"
 #include "core/tick_scheduler.h"
 #include "core/timer_system.h"
@@ -165,6 +168,9 @@ bool CounterStrikeSharpMMPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, s
 
         globals::Initialize();
         bindings::ResolveCoreBindings();
+        // From here on every ICvar call (ours and the SDK's ConVar/ConCommand code) goes through verified slots.
+        ICvar* const verifiedCvar = bindings::VerifiedCvar(globals::cvars);
+        g_pCVar = verifiedCvar;
         globals::InitializeHooks();
 
         CSSHARP_CORE_INFO("Globals loaded.");
@@ -176,19 +182,30 @@ bool CounterStrikeSharpMMPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, s
         on_map_end_callback = globals::callbackManager.CreateCallback("OnMapEnd");
         on_metamod_all_plugins_loaded_callback = globals::callbackManager.CreateCallback("OnMetamodAllPluginsLoaded");
 
-        m_hooks.Add(&IServerGameDLL::GameFrame, globals::server, this, nullptr, &CounterStrikeSharpMMPlugin::Hook_GameFrame);
-        m_hooks.Add(&INetworkServerService::StartupServer, globals::networkServerService, this, nullptr,
-                    &CounterStrikeSharpMMPlugin::Hook_StartupServer);
-        m_hooks.Add(&IEngineServiceMgr::RegisterLoopMode, globals::engineServiceManager, this,
-                    &CounterStrikeSharpMMPlugin::Hook_RegisterLoopMode, nullptr);
-        m_hooks.Add(&IEngineServiceMgr::FindService, globals::engineServiceManager, this, nullptr,
-                    &CounterStrikeSharpMMPlugin::Hook_FindService);
+        // By the slot index the boot Vtable Check verified. Disabled game-frame: no ticks, timers or frame tasks; the
+        // server keeps running and the startup report names the failed Binding.
+        if (bindings::ShouldRegisterHooks(bindings::features::GameFrame, "GameFrame hook"))
+            HookSlot(m_hooks, SlotMethod{ bindings::slots::ISource2Server_GameFrame, &IServerGameDLL::GameFrame }, globals::server, this,
+                     nullptr, &CounterStrikeSharpMMPlugin::Hook_GameFrame);
+        // Never-moved interfaces, hooked by verified slot index too. Disabled startup: no entity system or OnMapStart;
+        // disabled loop-mode: game event hooks registered before the game loop are never flushed (game-events needs it).
+        if (bindings::ShouldRegisterHooks(bindings::features::Startup, "StartupServer hook"))
+            HookSlot(m_hooks, SlotMethod{ bindings::slots::INetworkServerService_StartupServer, &INetworkServerService::StartupServer },
+                     globals::networkServerService, this, nullptr, &CounterStrikeSharpMMPlugin::Hook_StartupServer);
+        if (bindings::ShouldRegisterHooks(bindings::features::LoopMode, "loop mode hooks"))
+        {
+            HookSlot(m_hooks, SlotMethod{ bindings::slots::IEngineServiceMgr_RegisterLoopMode, &IEngineServiceMgr::RegisterLoopMode },
+                     globals::engineServiceManager, this, &CounterStrikeSharpMMPlugin::Hook_RegisterLoopMode, nullptr);
+            HookSlot(m_hooks, SlotMethod{ bindings::slots::IEngineServiceMgr_FindService, &IEngineServiceMgr::FindService },
+                     globals::engineServiceManager, this, nullptr, &CounterStrikeSharpMMPlugin::Hook_FindService);
+        }
 
         // Gated with the CGameEventManager_Init hook in globals::InitializeHooks (which logs when game events are disabled).
         if (bindings::IsEngineFeatureAvailable(bindings::features::GameEvents))
-            m_hooks.AddGlobal(&IGameEventManager2::LoadEventsFromFile,
-                              reinterpret_cast<void**>(bindings::GetBindingAddress("CGameEventManager")), this,
-                              &CounterStrikeSharpMMPlugin::Hook_LoadEventsFromFile, nullptr);
+            HookSlotVTable(m_hooks,
+                           SlotMethod{ bindings::slots::IGameEventManager2_LoadEventsFromFile, &IGameEventManager2::LoadEventsFromFile },
+                           reinterpret_cast<void**>(bindings::GetBindingAddress("CGameEventManager")), this,
+                           &CounterStrikeSharpMMPlugin::Hook_LoadEventsFromFile, nullptr);
 
         // .NET failing to start is fatal (ADR-0002): CounterStrikeSharp refuses to load. Undo what the managers registered
         // with the engine; the guard removes every hook. Before the game system, which cannot be taken out again.
@@ -208,9 +225,13 @@ bool CounterStrikeSharpMMPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, s
 
         CSSHARP_CORE_INFO("Hooks added.");
 
-        // Used by Metamod Console Commands
-        g_pCVar = globals::cvars;
-        ConVar_Register(FCVAR_RELEASE | FCVAR_CLIENT_CAN_EXECUTE | FCVAR_GAMEDLL);
+        // Used by Metamod Console Commands. The SDK aborts the process if a registration fails, so on a disabled
+        // add-command (its ICvar Slot Bindings) our own console commands are not registered.
+        g_pCVar = verifiedCvar;
+        if (bindings::IsEngineFeatureAvailable(bindings::features::AddCommand))
+            ConVar_Register(FCVAR_RELEASE | FCVAR_CLIENT_CAN_EXECUTE | FCVAR_GAMEDLL);
+        else
+            CSSHARP_CORE_WARN("{}, not registering core console commands", bindings::DescribeUnavailable(bindings::features::AddCommand));
 
         guard.succeeded = true;
         return true;
@@ -232,8 +253,10 @@ KHook::Return<void> CounterStrikeSharpMMPlugin::Hook_StartupServer(INetworkServe
 
     globals::timerSystem.OnStartupServer();
 
+    // Null while cssharp.server/global-vars is disabled: the map name is unknown, the entity system still starts.
+    const auto* globalVars = globals::getGlobalVars();
     on_activate_callback->ScriptContext().Reset();
-    on_activate_callback->ScriptContext().Push(globals::getGlobalVars()->mapname.ToCStr());
+    on_activate_callback->ScriptContext().Push(globalVars ? globalVars->mapname.ToCStr() : "");
     on_activate_callback->Execute();
     return { KHook::Action::Ignore };
 }
@@ -279,11 +302,13 @@ KHook::Return<void> CounterStrikeSharpMMPlugin::Hook_GameFrame(IServerGameDLL* h
     DynamicHook::CollectRetired();
     globals::timerSystem.OnGameFrame(simulating);
 
-    auto callbacks = globals::tickScheduler.getCallbacks(globals::getGlobalVars()->tickcount);
+    // Tick-scheduled tasks need the tick count: none run while cssharp.server/global-vars is disabled.
+    const auto* globalVars = globals::getGlobalVars();
+    if (globalVars == nullptr) return { KHook::Action::Ignore };
+    auto callbacks = globals::tickScheduler.getCallbacks(globalVars->tickcount);
     if (callbacks.size() > 0)
     {
-        CSSHARP_CORE_TRACE("Executing frame specific tasks of size: {0} on tick number {1}", callbacks.size(),
-                           globals::getGlobalVars()->tickcount);
+        CSSHARP_CORE_TRACE("Executing frame specific tasks of size: {0} on tick number {1}", callbacks.size(), globalVars->tickcount);
 
         for (auto& callback : callbacks)
         {

@@ -19,6 +19,7 @@
 
 #include "core/managers/player_manager.h"
 #include "scripting/autonative.h"
+#include "scripting/engine_feature_natives.h"
 #include "scripting/script_engine.h"
 
 namespace counterstrikesharp {
@@ -28,6 +29,7 @@ void SetClientListening(ScriptContext& scriptContext)
     auto receiver = scriptContext.GetArgument<CEntityInstance*>(0);
     auto sender = scriptContext.GetArgument<CEntityInstance*>(1);
     auto listen = scriptContext.GetArgument<ListenOverride>(2);
+    if (!RequireEngineFeature(scriptContext, bindings::features::PlayerSetListening)) return;
 
     if (!receiver)
     {
@@ -43,7 +45,7 @@ void SetClientListening(ScriptContext& scriptContext)
 
     auto iSenderSlot = sender->GetEntityIndex().Get() - 1;
 
-    if (iSenderSlot < 0 || iSenderSlot >= globals::getGlobalVars()->maxClients) scriptContext.ThrowNativeError("Invalid sender");
+    if (iSenderSlot < 0 || iSenderSlot >= globals::playerManager.MaxClients()) scriptContext.ThrowNativeError("Invalid sender");
 
     auto pPlayer = globals::playerManager.GetPlayerBySlot(receiver->GetEntityIndex().Get() - 1);
 
@@ -75,7 +77,7 @@ ListenOverride GetClientListening(ScriptContext& scriptContext)
 
     auto iSenderSlot = sender->GetEntityIndex().Get() - 1;
 
-    if (iSenderSlot < 0 || iSenderSlot >= globals::getGlobalVars()->maxClients) scriptContext.ThrowNativeError("Invalid sender");
+    if (iSenderSlot < 0 || iSenderSlot >= globals::playerManager.MaxClients()) scriptContext.ThrowNativeError("Invalid sender");
 
     auto pPlayer = globals::playerManager.GetPlayerBySlot(receiver->GetEntityIndex().Get() - 1);
 
@@ -92,6 +94,7 @@ void SetClientVoiceFlags(ScriptContext& scriptContext)
 {
     auto client = scriptContext.GetArgument<CEntityInstance*>(0);
     auto flags = scriptContext.GetArgument<VoiceFlag_t>(1);
+    if (!RequireEngineFeature(scriptContext, bindings::features::PlayerSetListening)) return;
 
     if (!client)
     {

@@ -20,7 +20,10 @@
 #include <engine2/ivengineserver2.h>
 #include <schema.h>
 
+#include "core/core_bindings.h"
 #include "core/managers/player_manager.h"
+#include "core/slot_binding_keys.h"
+#include "core/slot_hooks.h"
 #include "scripting/callback_manager.h"
 
 namespace counterstrikesharp {
@@ -31,7 +34,11 @@ VoiceManager::~VoiceManager() {}
 
 void VoiceManager::OnAllInitialized()
 {
-    m_hooks.Add(&IVEngineServer2::SetClientListening, globals::engine, this, &VoiceManager::SetClientListening, nullptr);
+    // By the slot index the boot Vtable Check verified. Disabled set-listening: voice flags and listen overrides
+    // cannot be set (their natives throw); the engine decides who hears whom.
+    if (bindings::ShouldRegisterHooks(bindings::features::PlayerSetListening, "SetClientListening hook"))
+        HookSlot(m_hooks, SlotMethod{ bindings::slots::IVEngineServer2_SetClientListening, &IVEngineServer2::SetClientListening },
+                 globals::engine, this, &VoiceManager::SetClientListening, nullptr);
 }
 
 void VoiceManager::OnShutdown() { m_hooks.Clear(); }

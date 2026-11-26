@@ -32,6 +32,21 @@ public enum BindingFailureReason
 
     /// <summary>The schema field does not exist.</summary>
     SchemaFieldMissing = 8,
+
+    /// <summary>A Slot Binding's fingerprint window does not match the class's live vtable at its index.</summary>
+    FingerprintMismatch = 9,
+
+    /// <summary>
+    /// A Slot Binding's fingerprint window does not match at its index and matches more than once nearby, so it is not
+    /// healed; see the match count.
+    /// </summary>
+    AmbiguousHeal = 10,
+
+    /// <summary>
+    /// A Slot Binding of a direct call that stays compiled was verified (or healed) at another slot than the one the call
+    /// was compiled with; a compiled call cannot follow it.
+    /// </summary>
+    CompiledSlotMoved = 11,
 }
 
 internal static class BindingFailureReasonExtensions
@@ -48,6 +63,9 @@ internal static class BindingFailureReasonExtensions
         BindingFailureReason.RttiVtableNotFound => "RTTI vtable not found",
         BindingFailureReason.SchemaClassMissing => "schema class missing",
         BindingFailureReason.SchemaFieldMissing => "schema field missing",
+        BindingFailureReason.FingerprintMismatch => "fingerprint mismatch",
+        BindingFailureReason.AmbiguousHeal => $"ambiguous heal ({matchCount} matches)",
+        BindingFailureReason.CompiledSlotMoved => "compiled call's slot moved",
         _ => "unknown",
     };
 }

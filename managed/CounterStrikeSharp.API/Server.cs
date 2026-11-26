@@ -16,6 +16,8 @@
 
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
+using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Core.Bindings;
 using CounterStrikeSharp.API.Modules.Memory;
 using CounterStrikeSharp.API.Modules.Utils;
 using Microsoft.Extensions.Logging;
@@ -41,6 +43,13 @@ namespace CounterStrikeSharp.API
         internal static void OnWorldUpdate()
         {
             ExecuteTickTasks(_onWorldUpdateTaskQueue);
+        }
+
+        // A task is queued even while the hook that runs it is disabled; it then never runs, and the first one warns.
+        private static void CheckFrameTask(string api)
+        {
+            if (Application.Instance is { } application)
+                FrameTaskEngineFeatures.CheckRegistration(EngineFeatures.Current, api, application.Logger);
         }
 
         private static void ExecuteTickTasks(ConcurrentQueue<Action> taskQueue)
@@ -72,9 +81,16 @@ namespace CounterStrikeSharp.API
         /// Executes a command on the server, as if it was entered from the console.
         /// </summary>
         /// <param name="command"></param>
-        public static void ExecuteCommand(string command) => NativeAPI.IssueServerCommand(command);
+        /// <exception cref="Core.EngineFeatureUnavailableException">Engine Feature <c>cssharp.server/execute-command</c> is
+        /// disabled</exception>
+        public static void ExecuteCommand(string command)
+        {
+            EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.ServerExecuteCommand);
+            NativeAPI.IssueServerCommand(command);
+        }
 
-        public static string MapName => NativeAPI.GetMapName();
+        /// <exception cref="Core.EngineFeatureUnavailableException">Engine Feature <c>cssharp.server/global-vars</c> is disabled</exception>
+        public static string MapName => GlobalVars(NativeAPI.GetMapName);
 
         /// <summary>
         /// Returns the total time the server has been running in seconds.
@@ -87,13 +103,15 @@ namespace CounterStrikeSharp.API
         /// e.g. 70.046875 would represent 70 seconds of map time and the 4483rd tick of the server (70.046875 / 0.015625).
         /// </summary>
         /// <remarks>Increments even when server is hibernating</remarks>
-        public static float CurrentTime => NativeAPI.GetCurrentTime();
+        /// <exception cref="Core.EngineFeatureUnavailableException">Engine Feature <c>cssharp.server/global-vars</c> is disabled</exception>
+        public static float CurrentTime => GlobalVars(NativeAPI.GetCurrentTime);
 
         /// <summary>
         /// Returns the current map tick count.
         /// CS2 is a 64 tick server, so the value will increment by 64 every second.
         /// </summary>
-        public static int TickCount => NativeAPI.GetTickCount();
+        /// <exception cref="Core.EngineFeatureUnavailableException">Engine Feature <c>cssharp.server/global-vars</c> is disabled</exception>
+        public static int TickCount => GlobalVars(NativeAPI.GetTickCount);
 
         /// <summary>
         /// Returns the total time the server has been running in seconds.
@@ -104,9 +122,23 @@ namespace CounterStrikeSharp.API
         /// <summary>
         /// Returns the time spent on last server or client frame
         /// </summary>
-        public static float FrameTime => NativeAPI.GetGameFrameTime();
+        /// <exception cref="Core.EngineFeatureUnavailableException">Engine Feature <c>cssharp.server/global-vars</c> is disabled</exception>
+        public static float FrameTime => GlobalVars(NativeAPI.GetGameFrameTime);
 
-        public static void PrecacheModel(string name) => NativeAPI.PrecacheModel(name);
+        // Map name, times, tick count and max players are read from the engine's global vars.
+        private static T GlobalVars<T>(Func<T> read)
+        {
+            Core.EngineFeatures.Current.ThrowIfUnavailable(Core.EngineFeatureNames.ServerGlobalVars);
+            return read();
+        }
+
+        /// <exception cref="Core.EngineFeatureUnavailableException">Engine Feature <c>cssharp.server/precache-model</c> is
+        /// disabled</exception>
+        public static void PrecacheModel(string name)
+        {
+            EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.ServerPrecacheModel);
+            NativeAPI.PrecacheModel(name);
+        }
 
         /// <summary>
         /// <inheritdoc cref="RunOnTick"/>
@@ -114,6 +146,7 @@ namespace CounterStrikeSharp.API
         /// </summary>
         public static Task RunOnTickAsync(int tick, Action task)
         {
+            CheckFrameTask(nameof(RunOnTick));
             var functionReference = FunctionReference.Create(task, FunctionLifetime.SingleUse);
             NativeAPI.QueueTaskForFrame(tick, functionReference);
             return functionReference.CompletionTask;
@@ -135,6 +168,7 @@ namespace CounterStrikeSharp.API
         /// </summary>
         public static Task NextFrameAsync(Action task)
         {
+            CheckFrameTask(nameof(NextFrame));
             var tcs = new TaskCompletionSource();
 
             _onTickTaskQueue.Enqueue(() =>
@@ -159,6 +193,7 @@ namespace CounterStrikeSharp.API
         /// </summary>
         public static Task<TResult> NextFrameAsync<TResult>(Func<TResult> task)
         {
+            CheckFrameTask(nameof(NextFrame));
             var tcs = new TaskCompletionSource<TResult>();
 
             _onTickTaskQueue.Enqueue(() =>
@@ -192,6 +227,7 @@ namespace CounterStrikeSharp.API
         /// </summary>
         public static Task NextWorldUpdateAsync(Action task)
         {
+            CheckFrameTask(nameof(NextWorldUpdate));
             var tcs = new TaskCompletionSource();
 
             _onWorldUpdateTaskQueue.Enqueue(() =>
@@ -216,6 +252,7 @@ namespace CounterStrikeSharp.API
         /// </summary>
         public static Task<TResult> NextWorldUpdateAsync<TResult>(Func<TResult> task)
         {
+            CheckFrameTask(nameof(NextWorldUpdate));
             var tcs = new TaskCompletionSource<TResult>();
 
             _onWorldUpdateTaskQueue.Enqueue(() =>
@@ -259,13 +296,19 @@ namespace CounterStrikeSharp.API
         {
             get
             {
-                _maxPlayers ??= NativeAPI.GetMaxClients();
+                _maxPlayers ??= GlobalVars(NativeAPI.GetMaxClients);
 
                 return _maxPlayers.Value;
             }
         }
 
-        public static bool IsMapValid(string mapName) => NativeAPI.IsMapValid(mapName);
+        /// <exception cref="Core.EngineFeatureUnavailableException">Engine Feature <c>cssharp.server/is-map-valid</c> is
+        /// disabled</exception>
+        public static bool IsMapValid(string mapName)
+        {
+            EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.ServerIsMapValid);
+            return NativeAPI.IsMapValid(mapName);
+        }
 
         public static string[] GetMapList()
         {

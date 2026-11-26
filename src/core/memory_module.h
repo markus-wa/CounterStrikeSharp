@@ -30,6 +30,8 @@
 #include <link.h>
 #endif
 
+#include "core/elf_relocations.h"
+#include "core/rtti_vtable.h"
 #include "interface.h"
 #include "tier0/tier0_strtools.h"
 #undef snprintf
@@ -107,7 +109,12 @@ class CModule
 
     void* FindSymbol(const std::string& name);
 
+    // The class's primary vtable by RTTI, or nullptr (with a warning) if it is not found or ambiguous.
     void* FindVirtualTable(const std::string& name);
+
+    // As FindVirtualTable, with the number of matching primary vtables (exact class name only, on Linux). Windows
+    // reports at most one match: the first found, as before.
+    rtti::VtableLookup LookupVirtualTable(const std::string& name);
 
     Section* GetSection(const std::string_view name)
     {
@@ -122,6 +129,10 @@ class CModule
     // Executable segments as scanned for signatures (on-disk bytes for engine2 and server).
     [[nodiscard]] const std::vector<Segments>& GetSegments() const { return m_vecSegments; }
 
+    // Every word the dynamic loader relocated in this module, with the value it wrote: original vtable slots, even
+    // where someone patched them since (Linux; built on first use; empty on Windows).
+    const elf::RelocatedWords& Relocations();
+
     std::string m_pszModule{};
     std::string m_pszPath{};
     void* m_base{};
@@ -132,6 +143,8 @@ class CModule
     std::vector<Segments> m_vecSegments{};
     std::vector<Section> m_sections{};
     std::uintptr_t m_baseAddress{};
+    elf::DynamicTables m_dynamicTables{};
+    std::optional<elf::RelocatedWords> m_relocations{};
     std::unordered_map<std::string, std::uintptr_t> _symbols{};
     std::unordered_map<std::string, std::uintptr_t> _interfaces{};
     using fnCreateInterface = void* (*)(const char*);

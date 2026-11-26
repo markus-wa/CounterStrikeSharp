@@ -145,6 +145,7 @@ void InitializeHooks()
 
 CGlobalVars* getGlobalVars()
 {
+    if (!bindings::IsEngineFeatureAvailable(bindings::features::GlobalVars)) return nullptr;
     INetworkGameServer* server = networkServerService->GetIGameServer();
     if (!server) return nullptr;
     return networkServerService->GetIGameServer()->GetGlobals();

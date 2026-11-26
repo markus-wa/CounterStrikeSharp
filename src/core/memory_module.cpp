@@ -464,6 +464,34 @@ void CModule::DumpSymbols(ElfW(Dyn) * dyn)
         return lastSymbol;
     };
 
+    m_dynamicTables.base = m_baseAddress;
+    for (auto* entry = dyn; entry->d_tag != DT_NULL; ++entry)
+    {
+        switch (entry->d_tag)
+        {
+            case DT_RELA:
+                m_dynamicTables.rela = reinterpret_cast<const void*>(entry->d_un.d_ptr);
+                break;
+            case DT_RELASZ:
+                m_dynamicTables.relaSize = entry->d_un.d_val;
+                break;
+            case DT_JMPREL:
+                m_dynamicTables.jmprel = reinterpret_cast<const void*>(entry->d_un.d_ptr);
+                break;
+            case DT_PLTRELSZ:
+                m_dynamicTables.jmprelSize = entry->d_un.d_val;
+                break;
+            case DT_SYMTAB:
+                m_dynamicTables.symbols = reinterpret_cast<const void*>(entry->d_un.d_ptr);
+                break;
+            case DT_STRTAB:
+                m_dynamicTables.strings = reinterpret_cast<const char*>(entry->d_un.d_ptr);
+                break;
+            default:
+                break;
+        }
+    }
+
     ElfW(Sym) * symbols{};
     ElfW(Word) * hash_ptr{};
 
@@ -755,56 +783,65 @@ void* CModule::FindVirtualTable(const std::string& name)
     Warning("Failed to find RTTI Complete Object Locator for %s\n", name.c_str());
     return nullptr;
 }
+
+const elf::RelocatedWords& CModule::Relocations()
+{
+    if (!m_relocations) m_relocations.emplace();
+    return *m_relocations;
+}
+
+rtti::VtableLookup CModule::LookupVirtualTable(const std::string& name)
+{
+    const auto address = reinterpret_cast<std::uintptr_t>(FindVirtualTable(name));
+    return { address, address != 0 ? 1u : 0u };
+}
 #endif
 
 #ifndef _WIN32
-void* CModule::FindVirtualTable(const std::string& name)
+const elf::RelocatedWords& CModule::Relocations()
 {
-    auto readOnlyData = GetSection(".rodata");
-    auto readOnlyRelocations = GetSection(".data.rel.ro");
+    if (!m_relocations)
+        m_relocations.emplace(m_dynamicTables, [](std::string_view name) {
+            return reinterpret_cast<std::uintptr_t>(dlsym(RTLD_DEFAULT, std::string(name).c_str()));
+        });
+    return *m_relocations;
+}
 
-    if (!readOnlyData || !readOnlyRelocations)
+rtti::VtableLookup CModule::LookupVirtualTable(const std::string& name)
+{
+    std::vector<rtti::MemoryRegion> names;
+    std::vector<rtti::MemoryRegion> data;
+    for (const auto& section : m_sections)
+    {
+        const rtti::MemoryRegion region{ static_cast<const std::uint8_t*>(section.m_pBase), section.m_iSize };
+        if (section.m_szName == ".rodata") names.push_back(region);
+        else if (section.m_szName == ".data.rel.ro" || section.m_szName == ".data.rel.ro.local")
+            data.push_back(region);
+    }
+
+    if (names.empty() || data.empty())
     {
         Warning("Failed to find .rodata or .data.rel.ro section\n");
+        return {};
+    }
+
+    return rtti::FindPrimaryVtable(name, names, data);
+}
+
+void* CModule::FindVirtualTable(const std::string& name)
+{
+    const auto lookup = LookupVirtualTable(name);
+    if (lookup.Ambiguous())
+    {
+        Warning("Ambiguous vtable for %s: %zu primary vtables match\n", name.c_str(), lookup.matchCount);
         return nullptr;
     }
-
-    std::string decoratedTableName = std::to_string(name.length()) + name;
-
-    SignatureIterator sigIt(readOnlyData->m_pBase, readOnlyData->m_iSize, (const byte*)decoratedTableName.c_str(),
-                            decoratedTableName.size() + 1);
-    void* classNameString = sigIt.FindNext(false);
-
-    if (!classNameString)
+    if (!lookup.Found())
     {
-        Warning("Failed to find type descriptor for %s\n", name.c_str());
+        Warning("Failed to find vtable for %s\n", name.c_str());
         return nullptr;
     }
-
-    SignatureIterator sigIt2(readOnlyRelocations->m_pBase, readOnlyRelocations->m_iSize, (const byte*)&classNameString, sizeof(void*));
-    void* typeName = sigIt2.FindNext(false);
-
-    if (!typeName)
-    {
-        Warning("Failed to find type name for %s\n", name.c_str());
-        return nullptr;
-    }
-
-    void* typeInfo = (void*)((uintptr_t)typeName - 0x8);
-
-    for (const auto& sectionName : { std::string_view(".data.rel.ro"), std::string_view(".data.rel.ro.local") })
-    {
-        auto section = GetSection(sectionName);
-        if (!section) continue;
-
-        SignatureIterator sigIt3(section->m_pBase, section->m_iSize, (const byte*)&typeInfo, sizeof(void*));
-
-        while (void* vtable = sigIt3.FindNext(false))
-            if (*(int64_t*)((uintptr_t)vtable - 0x8) == 0) return (void*)((uintptr_t)vtable + 0x8);
-    }
-
-    Warning("Failed to find vtable for %s\n", name.c_str());
-    return nullptr;
+    return reinterpret_cast<void*>(lookup.address);
 }
 #endif
 

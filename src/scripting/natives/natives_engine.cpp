@@ -22,6 +22,7 @@
 #include <public/worldsize.h>
 
 #include "mm_plugin.h"
+#include "core/core_bindings.h"
 #include "core/timer_system.h"
 #include "core/utils.h"
 #include "scripting/autonative.h"
@@ -33,6 +34,8 @@
 #include "core/managers/player_manager.h"
 #include "core/managers/server_manager.h"
 #include "core/tick_scheduler.h"
+#include "core/engine_server_calls.h"
+#include "scripting/engine_feature_natives.h"
 #include "core/game_system.h"
 #include "networksystem/inetworkmessages.h"
 #include "usermessages.pb.h"
@@ -55,44 +58,62 @@ const char* GetGameDirectory(ScriptContext& script_context) { return strdup(Plat
 bool IsMapValid(ScriptContext& script_context)
 {
     auto mapname = script_context.GetArgument<const char*>(0);
-    return globals::engine->IsMapValid(mapname) != 0;
+    if (!RequireEngineFeature(script_context, bindings::features::ServerIsMapValid)) return false;
+    return engine_server::IsMapValid(mapname);
 }
 
 float GetTickInterval(ScriptContext& script_context) { return globals::engine_fixed_tick_interval; }
 
-float GetCurrentTime(ScriptContext& script_context) { return globals::getGlobalVars()->curtime; }
+// Null (after throwing) while cssharp.server/global-vars is disabled or before a map is loaded.
+static CGlobalVars* GlobalVars(ScriptContext& script_context)
+{
+    if (auto* globalVars = globals::getGlobalVars()) return globalVars;
+    if (RequireEngineFeature(script_context, bindings::features::GlobalVars))
+        script_context.ThrowNativeError("Global Variables not initialized yet.");
+    return nullptr;
+}
 
-int GetTickCount(ScriptContext& script_context) { return globals::getGlobalVars()->tickcount; }
+float GetCurrentTime(ScriptContext& script_context)
+{
+    const auto* globalVars = GlobalVars(script_context);
+    return globalVars ? globalVars->curtime : 0.0f;
+}
 
-float GetGameFrameTime(ScriptContext& script_context) { return globals::getGlobalVars()->frametime; }
+int GetTickCount(ScriptContext& script_context)
+{
+    const auto* globalVars = GlobalVars(script_context);
+    return globalVars ? globalVars->tickcount : 0;
+}
+
+float GetGameFrameTime(ScriptContext& script_context)
+{
+    const auto* globalVars = GlobalVars(script_context);
+    return globalVars ? globalVars->frametime : 0.0f;
+}
 
 double GetEngineTime(ScriptContext& script_context) { return Plat_FloatTime(); }
 
 int GetMaxClients(ScriptContext& script_context)
 {
-    auto globalVars = globals::getGlobalVars();
-    if (globalVars == nullptr)
-    {
-        script_context.ThrowNativeError("Global Variables not initialized yet.");
-        return -1;
-    }
-
-    return globalVars->maxClients;
+    const auto* globalVars = GlobalVars(script_context);
+    return globalVars ? globalVars->maxClients : -1;
 }
 
 void ServerCommand(ScriptContext& script_context)
 {
     auto command = script_context.GetArgument<const char*>(0);
+    if (!RequireEngineFeature(script_context, bindings::features::ServerExecuteCommand)) return;
 
     auto clean_command = std::string(command);
     clean_command.append("\n\0");
-    globals::engine->ServerCommand(clean_command.c_str());
+    engine_server::ServerCommand(clean_command.c_str());
 }
 
 void PrecacheModel(ScriptContext& script_context)
 {
     auto name = script_context.GetArgument<const char*>(0);
-    globals::engine->PrecacheGeneric(name);
+    if (!RequireEngineFeature(script_context, bindings::features::ServerPrecacheModel)) return;
+    engine_server::PrecacheGeneric(name);
 }
 
 void AddResource(ScriptContext& script_context)
@@ -190,7 +211,8 @@ void DisconnectClient(ScriptContext& scriptContext)
         return;
     }
 
-    globals::engineServer2->DisconnectClient(slot, disconnectReason);
+    if (!RequireEngineFeature(scriptContext, bindings::features::PlayerDisconnect)) return;
+    engine_server::DisconnectClient(slot, disconnectReason);
 }
 
 void ClientPrint(ScriptContext& scriptContext)
@@ -198,6 +220,8 @@ void ClientPrint(ScriptContext& scriptContext)
     auto slot = scriptContext.GetArgument<int>(0);
     auto hudDestination = scriptContext.GetArgument<int>(1);
     auto message = scriptContext.GetArgument<const char*>(2);
+
+    if (!RequireEngineFeature(scriptContext, bindings::features::UserMessages)) return;
 
     NetMessageInfo_t* pNetMsg = globals::networkMessages->FindNetworkMessagePartial("TextMsg");
     auto data = pNetMsg->AllocateMessage()->ToPB<CUserMessageTextMsg>();

@@ -12,9 +12,32 @@ internal enum BindingKind
     Offset,
     RttiVtable,
     SchemaField,
+    Slot,
 }
 
-/// <summary>One Binding in the Resolution Report: resolved (with its address or offset) or failed (with a reason).</summary>
+/// <summary>
+/// A Slot Binding's Vtable Check (mirrors <c>bindings::SlotEvidence</c>): the class whose vtable holds the slot, the
+/// Gamedata index, how the fingerprint window matched (Window, OwnFingerprint, Heal or None), the live and recorded
+/// vtable sizes, and the fingerprint window Gamedata recorded (null entries: neighbours outside the vtable).
+/// </summary>
+internal sealed record SlotEvidence(
+    string ClassName,
+    long StatedIndex,
+    string Match,
+    long VtableSize,
+    long? RecordedVtableSize,
+    IReadOnlyList<string?>? Window = null)
+{
+    /// <summary>A Game update changed the class's vtable size: a warning, never a failure by itself.</summary>
+    public bool SizeChanged => VtableSize != 0 && RecordedVtableSize is { } recorded && recorded != VtableSize;
+}
+
+/// <summary>
+/// One Binding in the Resolution Report: resolved (with its address or offset) or failed (with a reason). A Slot
+/// Binding's offset is its slot index; <paramref name="Unverified"/> marks one used at its Gamedata index without a
+/// Vtable Check, <paramref name="Healed"/> one found at another index than Gamedata states (its offset is the new
+/// index, <see cref="SlotEvidence.StatedIndex"/> the old one). Both still count as resolved.
+/// </summary>
 internal sealed record BindingResult(
     string Key,
     BindingKind Kind,
@@ -23,7 +46,10 @@ internal sealed record BindingResult(
     int MatchCount,
     nint Address,
     long Offset,
-    string Library);
+    string Library,
+    bool Unverified = false,
+    SlotEvidence? Slot = null,
+    bool Healed = false);
 
 /// <summary>
 /// The immutable Resolution Report for the running build (GLOSSARY.md): the build id, every core Binding as native
@@ -63,7 +89,12 @@ internal sealed class ResolutionReport
         return new ResolutionReport(
             dto.BuildId,
             dto.Bindings.Select(b => new BindingResult(b.Key, b.Kind, b.Resolved, b.Reason, checked((int)b.MatchCount),
-                unchecked((nint)b.Address), b.Offset, b.Library)),
+                unchecked((nint)b.Address), b.Offset, b.Library, b.Status == "Unverified",
+                b.Slot == null
+                    ? null
+                    : new SlotEvidence(b.Slot.Class, b.Slot.StatedIndex, b.Slot.Match, b.Slot.VtableSize, b.Slot.RecordedVtableSize,
+                        b.Slot.Window),
+                b.Status == "Healed")),
             dto.Features.Select(f => new EngineFeatureDeclaration(f.Name, f.Bindings.Select(BindingDeclaration.Any).ToList())));
     }
 
@@ -83,7 +114,17 @@ internal sealed class ResolutionReport
         ulong MatchCount,
         ulong Address,
         long Offset,
-        string Library);
+        string Library,
+        string? Status,
+        SlotDto? Slot);
+
+    private sealed record SlotDto(
+        string Class,
+        long StatedIndex,
+        string Match,
+        long VtableSize,
+        long? RecordedVtableSize,
+        List<string?>? Window);
 
     private sealed record FeatureDto(string Name, List<string> Bindings);
 }

@@ -14,11 +14,13 @@
  *  along with CounterStrikeSharp.  If not, see <https://www.gnu.org/licenses/>. *
  */
 #include "core/UserMessage.h"
+#include "core/core_bindings.h"
 #include "core/globals.h"
 #include "core/log.h"
 #include "core/managers/usermessage_manager.h"
 #include "engine2/igameeventsystem.h"
 #include "scripting/autonative.h"
+#include "scripting/engine_feature_natives.h"
 
 #include "core/recipientfilters.h"
 
@@ -733,6 +735,7 @@ static void UserMessageSetRecipients(ScriptContext& scriptContext)
 static void UserMessageSend(ScriptContext& scriptContext)
 {
     auto message = scriptContext.GetArgument<UserMessage*>(0);
+    if (!RequireEngineFeature(scriptContext, bindings::features::UserMessages)) return;
 
     CRecipientFilter filter{};
 

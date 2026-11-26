@@ -1,10 +1,17 @@
 #include "core/core_bindings.h"
 
 #include <algorithm>
+#include <chrono>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <string>
 
+#ifndef _WIN32
+#include <dlfcn.h>
+#endif
+
+#include "core/compiled_slots.h"
 #include "core/gameconfig.h"
 #include "core/globals.h"
 #include "core/log.h"
@@ -18,6 +25,19 @@ namespace {
 
 ResolutionReport coreReport;
 
+#ifdef _WIN32
+constexpr Platform kPlatform = Platform::Windows;
+#else
+constexpr Platform kPlatform = Platform::Linux;
+#endif
+
+// The resolver seam (ADR-0004): the only place core Bindings are located. Swap the adapter here.
+const IBindingResolver& Resolver()
+{
+    static const std::unique_ptr<IBindingResolver> resolver = std::make_unique<BuiltinResolver>(kPlatform);
+    return *resolver;
+}
+
 ModuleImage ImageOf(modules::CModule* module)
 {
     ModuleImage image;
@@ -29,8 +49,17 @@ ModuleImage ImageOf(modules::CModule* module)
         return reinterpret_cast<std::uintptr_t>(module->FindSymbol(std::string(name)));
     };
     image.findVirtualTable = [module](std::string_view name) {
-        return reinterpret_cast<std::uintptr_t>(module->FindVirtualTable(std::string(name)));
+        return module->LookupVirtualTable(std::string(name));
     };
+#ifndef _WIN32
+    // A slot as the loader relocated it, not as it is now: Metamod patches ISource2Server::Init in place while plugins
+    // load, and hooks (ours, other plugins') replace the slots they hook.
+    image.readVtableSlot = [module](std::uintptr_t vtable, std::size_t index) {
+        return module->Relocations().At(vtable + index * sizeof(void*));
+    };
+    image.pureVirtual = reinterpret_cast<std::uintptr_t>(dlsym(RTLD_DEFAULT, "__cxa_pure_virtual"));
+    image.deletedVirtual = reinterpret_cast<std::uintptr_t>(dlsym(RTLD_DEFAULT, "__cxa_deleted_virtual"));
+#endif
     return image;
 }
 
@@ -64,6 +93,7 @@ std::string ReadBuildId()
 
 void ResolveCoreBindings()
 {
+    const auto start = std::chrono::steady_clock::now();
     // Same library names as CGameConfig::GetModule.
     ModuleImages images;
     AddModule(images, "engine", modules::engine);
@@ -74,7 +104,19 @@ void ResolveCoreBindings()
 
     // Every core Gamedata key, including those only managed code consumes (managed declares their Engine Features).
     const auto& gamedata = globals::gameConfig->GetGamedata();
-    coreReport = ResolveBindings(ReadBuildId(), gamedata, images, CoreBindingDeclarations(gamedata));
+    auto declarations = CoreBindingDeclarations(gamedata);
+    // Compiled direct calls cannot follow a Heal: their Slot Bindings must verify at the compiled index.
+    for (auto& declaration : declarations)
+        for (const auto& compiled : CompiledSlots())
+            if (declaration.kind == BindingKind::Slot && declaration.key == compiled.key) declaration.compiledIndex = compiled.index;
+    coreReport = Resolver().Resolve(ReadBuildId(), gamedata, images, declarations);
+    // Boot cost of resolving (signature scans, RTTI lookups, Vtable Checks), so a slow boot can be told apart.
+    const std::chrono::duration<double, std::milli> elapsed = std::chrono::steady_clock::now() - start;
+    const auto slotBindings = std::count_if(coreReport.Bindings().begin(), coreReport.Bindings().end(), [](const BindingResult& binding) {
+        return binding.kind == BindingKind::Slot;
+    });
+    CSSHARP_CORE_INFO("Resolution took {:.1f} ms for {} Bindings ({} Slot Bindings)", elapsed.count(), coreReport.Bindings().size(),
+                      slotBindings);
 
     const auto summary = FormatBindingSummary(coreReport);
     const bool anyFailed = std::any_of(coreReport.Bindings().begin(), coreReport.Bindings().end(), [](const BindingResult& binding) {
@@ -84,6 +126,11 @@ void ResolveCoreBindings()
     if (anyFailed) CSSHARP_CORE_WARN("{}", summary);
     else
         CSSHARP_CORE_INFO("{}", summary);
+    // A Heal keeps the Engine Feature available, but the server runs on a location Gamedata does not state.
+    for (const auto& heal : FormatHeals(coreReport))
+        CSSHARP_CORE_WARN("{}", heal);
+    for (const auto& warning : FormatVtableSizeWarnings(coreReport))
+        CSSHARP_CORE_WARN("{}", warning);
 }
 
 const ResolutionReport& CoreResolutionReport() { return coreReport; }
@@ -108,6 +155,8 @@ std::optional<std::int64_t> GetBindingOffset(std::string_view key)
         return std::nullopt;
     return binding->offset;
 }
+
+std::optional<int> GetBindingSlot(std::string_view key) { return SlotIndexOf(coreReport, key); }
 
 SignatureScan ScanModuleSignature(const char* moduleName, std::string_view signature)
 {

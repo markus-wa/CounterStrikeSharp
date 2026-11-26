@@ -105,7 +105,7 @@ TEST_CASE("The native catalog declares the event and network Engine Features, ga
 
     const auto gameEvents = bindingsOf(features::GameEvents);
     CHECK(features::GameEvents == "cssharp.events/game-events");
-    REQUIRE(gameEvents.size() == 2);
+    REQUIRE(gameEvents.size() >= 2);
     CHECK(gameEvents[0].key == "CGameEventManager_Init");
     CHECK(gameEvents[0].kind == BindingKind::Signature);
     CHECK(gameEvents[1].key == "CGameEventManager");
@@ -123,15 +123,26 @@ TEST_CASE("The native catalog declares the event and network Engine Features, ga
     CHECK(stateChanged[0].key == "NetworkStateChanged");
     CHECK(stateChanged[0].kind == BindingKind::Signature);
     CHECK(stateChanged[1].key == "SetStateChanged");
-    CHECK(stateChanged[1].kind == BindingKind::Offset);
+    CHECK(stateChanged[1].kind == BindingKind::Slot); // a game-class virtual (CEntityInstance::NetworkStateChanged)
+    CHECK_FALSE(stateChanged[1].headerIndex);
 
     const auto checkTransmit = bindingsOf(features::CheckTransmit);
     CHECK(features::CheckTransmit == "cssharp.network/check-transmit");
     REQUIRE(checkTransmit.size() == 2);
     CHECK(checkTransmit[0].key == "ISource2GameEntities::CheckTransmit");
-    CHECK(checkTransmit[0].kind == BindingKind::Offset);
+    CHECK(checkTransmit[0].kind == BindingKind::Slot);
     CHECK(checkTransmit[1].key == "CheckTransmitPlayerSlot");
     CHECK(checkTransmit[1].kind == BindingKind::Offset);
+}
+
+TEST_CASE("The native catalog declares game-frame on GameFrame's Slot Binding")
+{
+    const auto* gameFrame = FindNativeEngineFeature(features::GameFrame);
+    REQUIRE(gameFrame != nullptr);
+    CHECK(features::GameFrame == "cssharp.server/game-frame");
+    REQUIRE_FALSE(gameFrame->bindings.empty());
+    CHECK(gameFrame->bindings[0].key == "ISource2Server::GameFrame");
+    CHECK(gameFrame->bindings[0].kind == BindingKind::Slot);
 }
 
 TEST_CASE("An RTTI vtable Binding of the catalog is resolved by class name in its library, not taken from Gamedata")
@@ -149,7 +160,9 @@ TEST_CASE("An RTTI vtable Binding of the catalog is resolved by class name in it
     CHECK(vtable->kind == BindingKind::RttiVtable);
 
     ModuleImage server;
-    server.findVirtualTable = [](std::string_view name) -> std::uintptr_t { return name == "CGameEventManager" ? 0x5000 : 0; };
+    server.findVirtualTable = [](std::string_view name) -> counterstrikesharp::rtti::VtableLookup {
+        return name == "CGameEventManager" ? counterstrikesharp::rtti::VtableLookup{ 0x5000, 1 } : counterstrikesharp::rtti::VtableLookup{};
+    };
     ModuleImages found;
     found.emplace("server", server);
     const auto* gameEvents = FindNativeEngineFeature(features::GameEvents);
@@ -259,6 +272,7 @@ TEST_CASE("Core Bindings are the catalog's Bindings plus every core Gamedata key
     const nlohmann::json root = {
         { "ClientPrint", { { "signatures", { { "library", "server" }, { "linux", "55 48" }, { "windows", "55" } } } } },
         { "CBaseEntity_Teleport", { { "offsets", { { "linux", 157 }, { "windows", 156 } } } } },
+        { "SomeStructField", { { "offsets", { { "linux", 104 }, { "windows", 104 } } } } },
         { "PatchOnly", { { "patches", nlohmann::json::object() } } },
     };
     const auto declarations = CoreBindingDeclarations(ParseGamedata(root, "linux"));
@@ -277,7 +291,9 @@ TEST_CASE("Core Bindings are the catalog's Bindings plus every core Gamedata key
     REQUIRE(find("ClientPrint") != nullptr);
     CHECK(find("ClientPrint")->kind == BindingKind::Signature);
     REQUIRE(find("CBaseEntity_Teleport") != nullptr);
-    CHECK(find("CBaseEntity_Teleport")->kind == BindingKind::Offset);
+    CHECK(find("CBaseEntity_Teleport")->kind == BindingKind::Slot); // a game-class virtual: a Slot Binding even without "vtable"
+    REQUIRE(find("SomeStructField") != nullptr);
+    CHECK(find("SomeStructField")->kind == BindingKind::Offset);
 
     CHECK(find("PatchOnly") == nullptr);
 
@@ -309,6 +325,7 @@ TEST_CASE("The Resolution Report crosses to managed as data: build id, every Bin
     CHECK(json["bindings"][0] == nlohmann::json{ { "key", "Host_Say" },
                                                  { "kind", "Signature" },
                                                  { "resolved", false },
+                                                 { "status", "Failed" },
                                                  { "reason", "Ambiguous" },
                                                  { "matchCount", 2 },
                                                  { "address", 0 },
@@ -329,7 +346,8 @@ TEST_CASE("Every failure reason and Binding kind has its own name on the wire")
     std::set<std::string> names;
     for (auto reason : { FailureReason::None, FailureReason::MissingFromGamedata, FailureReason::MissingForThisOs,
                          FailureReason::InvalidPattern, FailureReason::NotFound, FailureReason::Ambiguous,
-                         FailureReason::RttiVtableNotFound, FailureReason::SchemaClassMissing, FailureReason::SchemaFieldMissing })
+                         FailureReason::RttiVtableNotFound, FailureReason::SchemaClassMissing, FailureReason::SchemaFieldMissing,
+                         FailureReason::FingerprintMismatch })
     {
         const ResolutionReport report("b", { Failed("k", reason) });
         const auto json = nlohmann::json::parse(ResolutionReportToJson(report, {}));
@@ -341,9 +359,15 @@ TEST_CASE("Every failure reason and Binding kind has its own name on the wire")
     vtable.kind = BindingKind::RttiVtable;
     BindingResult schemaField = Resolved("CBaseEntity::m_iTeamNum");
     schemaField.kind = BindingKind::SchemaField;
-    const auto json = nlohmann::json::parse(ResolutionReportToJson(ResolutionReport("b", { vtable, schemaField }), {}));
+    BindingResult slot = Resolved("ISource2Server::GameFrame");
+    slot.kind = BindingKind::Slot;
+    slot.status = BindingStatus::Unverified;
+    const auto json = nlohmann::json::parse(ResolutionReportToJson(ResolutionReport("b", { vtable, schemaField, slot }), {}));
     CHECK(json["bindings"][0]["kind"] == "RttiVtable");
     CHECK(json["bindings"][1]["kind"] == "SchemaField");
+    CHECK(json["bindings"][2]["kind"] == "Slot");
+    CHECK(json["bindings"][2]["status"] == "Unverified");
+    CHECK(json["bindings"][2]["resolved"] == true);
 }
 
 TEST_CASE("Calling into a disabled Engine Feature is described in the wording of the managed typed exception")

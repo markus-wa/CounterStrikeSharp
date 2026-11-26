@@ -37,6 +37,8 @@ class CCoreConfig
     bool UnlockConVars = true;
     bool AutoUpdateEnabled = true;
     std::string AutoUpdateURL = std::string("http://gamedata.cssharp.dev");
+    // Whether a Slot Binding whose window does not match at its Gamedata index may Heal (Linux; Windows has no Vtable Check).
+    bool HealEnabled = true;
 
     using json = nlohmann::json;
     CCoreConfig(const std::string& path);

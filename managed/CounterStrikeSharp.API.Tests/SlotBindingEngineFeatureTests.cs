@@ -180,6 +180,31 @@ public class SlotBindingEngineFeatureTests
     }
 
     [Fact]
+    public void TheStartupReportSaysWhenHealingIsOff()
+    {
+        var failed = Slot(false, BindingFailureReason.FingerprintMismatch);
+
+        var report = new EngineFeatureSet(new ResolutionReport(BuildId, [failed], [GameFrame], healEnabled: false), [])
+            .FormatStartupReport();
+
+        Assert.Equal(
+            $"Engine Features for build {BuildId}: 0 of 1 available, 1 disabled:\n" +
+            "  cssharp.server/game-frame disabled (ISource2Server::GameFrame: fingerprint mismatch)\n" +
+            "  Healing is off (HealEnabled: false): a Slot Binding that moved fails as fingerprint mismatch", report);
+        Assert.DoesNotContain("Healing is off", Features(failed).FormatStartupReport());
+    }
+
+    [Fact]
+    public void TheReportReadsHealEnabledFromNativeAndDefaultsToOn()
+    {
+        const string bindings = """ "bindings": [], "features": [] """;
+
+        Assert.False(ResolutionReport.FromJson($$"""{ "buildId": "b", "healEnabled": false, {{bindings}} }""").HealEnabled);
+        Assert.True(ResolutionReport.FromJson($$"""{ "buildId": "b", "healEnabled": true, {{bindings}} }""").HealEnabled);
+        Assert.True(ResolutionReport.FromJson($$"""{ "buildId": "b", {{bindings}} }""").HealEnabled);
+    }
+
+    [Fact]
     public void OnTickOnADisabledGameFrameRegistersAndWarnsOnce()
     {
         var features = Features(Slot(false, BindingFailureReason.FingerprintMismatch));

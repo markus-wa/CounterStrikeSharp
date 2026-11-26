@@ -62,6 +62,13 @@ bool CCoreConfig::Init(char* conf_error, int conf_error_size)
         UnlockConVars = m_json.value("UnlockConVars", UnlockConVars);
         AutoUpdateEnabled = m_json.value("AutoUpdateEnabled", AutoUpdateEnabled);
         AutoUpdateURL = m_json.value("AutoUpdateURL", AutoUpdateURL);
+        // A wrong type falls back to the default for this key only, with a warning, not for the whole file.
+        if (const auto heal = m_json.find("HealEnabled"); heal != m_json.end() && !heal->is_null())
+        {
+            if (heal->is_boolean()) HealEnabled = heal->get<bool>();
+            else
+                CSSHARP_CORE_WARN("CoreConfig HealEnabled {} is not true or false, using true", heal->dump());
+        }
     }
     catch (const std::exception& ex)
     {

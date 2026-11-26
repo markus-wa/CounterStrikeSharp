@@ -93,7 +93,7 @@ internal sealed class EngineFeatureSet
     /// The startup report: one block with the build id, how many Engine Features are available, and each disabled one
     /// with its failed Binding and reason. Same wording as native ("Engine Feature X disabled (Key: reason)"). Then every
     /// Heal with its evidence and the vtables whose size changed since Gamedata was generated (same wording as the
-    /// native log), and Slot Bindings used without a Vtable Check.
+    /// native log), Slot Bindings used without a Vtable Check, and whether the operator turned Heal off.
     /// </summary>
     public string FormatStartupReport()
     {
@@ -131,6 +131,11 @@ internal sealed class EngineFeatureSet
         {
             text.Append($"\n  {unverified.Count} Slot Binding(s) unverified (no Vtable Check on this platform or no fingerprint ")
                 .Append($"window in Gamedata): {string.Join(", ", unverified)}");
+        }
+
+        if (!Report.HealEnabled)
+        {
+            text.Append("\n  Healing is off (HealEnabled: false): a Slot Binding that moved fails as fingerprint mismatch");
         }
 
         return text.ToString();

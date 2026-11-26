@@ -10,6 +10,8 @@
 # healed:    Gamedata states all ten one slot too low, as 1.41.9.7 Gamedata would on 1.42.0.1 (Valve inserted a
 #            virtual before them); each heals one slot up, the startup report lists all ten Heals, the same listeners
 #            fire and calls return, and the installed Gamedata is unchanged.
+# heal off:  core.json HealEnabled false and the same Gamedata: the ten fail as fingerprint mismatch instead of healing,
+#            both logs say healing is off, and the server stays up (no smoke test: frames stop with GameFrame).
 # corrupted: OnHostNameChanged's and IsPaused's own fingerprints are wrong; exactly hostname-changed and is-paused are
 #            disabled (the hostname listener never fires, the IsPaused native throws), everything else still works.
 # Hibernation, Steam API (the test server runs with sv_lan 1), fatal shutdown and not-in-game updates cannot be
@@ -71,6 +73,16 @@ shift_all="${shift_all%,}) as \$k (.; .[\$k].offsets.linux -= 1 | .[\$k].vtable.
     --check "$(only_failed)" \
     --check "$(outcome passed $frames)" \
     --check 'cmp gamedata.installed.json gamedata.after-run.json && jq -e ".\"ISource2Server::IsPaused\".offsets.linux == 31" gamedata.after-run.json' ||
+    status=1
+
+echo "== isource2server: HealEnabled false, every ISource2Server Slot Binding one slot too low"
+"$run" "$@" --no-build --no-smoke \
+    --core-jq '.HealEnabled = false' \
+    --gamedata-jq "$shift_all" \
+    --expect-log 'Bindings for build [^:]+: 10 of [0-9]+ failed: .*ISource2Server::GameFrame \(fingerprint mismatch\).*; healing off' \
+    --expect-log '^ +cssharp\.server/game-frame disabled \(ISource2Server::GameFrame: fingerprint mismatch\)' \
+    --expect-log '^ +Healing is off \(HealEnabled: false\): a Slot Binding that moved fails as fingerprint mismatch' \
+    --expect-no-log '[Hh]ealed ISource2Server' ||
     status=1
 
 echo "== isource2server: OnHostNameChanged's and IsPaused's fingerprints corrupted"

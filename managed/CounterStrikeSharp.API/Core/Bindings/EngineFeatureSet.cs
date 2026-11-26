@@ -109,6 +109,29 @@ internal sealed class EngineFeatureSet
         return text.ToString();
     }
 
+    /// <summary>
+    /// The fatal error for the operator's <see cref="FailMode.Crash"/>: names every disabled Engine Feature with its failed
+    /// Binding and reason, in the startup report's wording. Null when the server keeps running: fail mode
+    /// <see cref="FailMode.Disable"/>, or every Engine Feature available. Only core Engine Features
+    /// count; plugin signatures and schema misses are not in this set.
+    /// </summary>
+    public string? FormatFailModeError(FailMode failMode)
+    {
+        if (failMode != FailMode.Crash) return null;
+
+        var disabled = _all.Where(s => !s.IsAvailable).ToList();
+        if (disabled.Count == 0) return null;
+
+        var text = new StringBuilder($"FailMode is crash and {disabled.Count} of {_all.Count} core Engine Features ")
+            .Append(disabled.Count == 1 ? "is" : "are").Append($" disabled on build {BuildId}, stopping the server:");
+        foreach (var status in disabled)
+        {
+            text.Append("\n  ").Append(status);
+        }
+
+        return text.ToString();
+    }
+
     private BindingResult GetBinding(EngineFeatureDeclaration feature, string key)
     {
         if (!feature.Bindings.Any(b => b.Key == key))

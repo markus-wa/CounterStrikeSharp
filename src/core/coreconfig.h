@@ -37,6 +37,9 @@ class CCoreConfig
     bool UnlockConVars = true;
     bool AutoUpdateEnabled = true;
     std::string AutoUpdateURL = std::string("http://gamedata.cssharp.dev");
+    // What happens when a core Engine Feature is disabled after boot resolution: "disable" (fail soft, ADR-0002) or
+    // "crash" (stop the server after the startup report). Unknown values fall back to "disable" with a warning.
+    std::string FailMode = std::string("disable");
 
     using json = nlohmann::json;
     CCoreConfig(const std::string& path);
@@ -44,6 +47,8 @@ class CCoreConfig
 
     bool Init(char* conf_error, int conf_error_size);
     const std::string GetPath() const;
+
+    bool IsFailModeCrash() const { return FailMode == "crash"; }
 
     bool IsSilentChatTrigger(const std::string& message, std::string& prefix) const;
     bool IsPublicChatTrigger(const std::string& message, std::string& prefix) const;

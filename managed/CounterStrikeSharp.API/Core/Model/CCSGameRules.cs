@@ -15,6 +15,7 @@
  */
 
 using System.Runtime.InteropServices;
+using CounterStrikeSharp.API.Core.Bindings;
 using CounterStrikeSharp.API.Modules.Memory;
 using CounterStrikeSharp.API.Modules.Entities.Constants;
 
@@ -27,6 +28,7 @@ public partial class CCSGameRules
     /// <summary>
     /// Terminate the round with the given delay and reason.
     /// </summary>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.game-rules/terminate-round</c> is disabled</exception>
     public void TerminateRound(float delay, RoundEndReason roundEndReason)
     {
         if (IsWindows.Value)
@@ -43,18 +45,23 @@ public partial class CCSGameRules
     {
         // TODO: TEST!
         // the third parameter seems to be something like `CDefaultTypedEntityInstanceFilter<CBaseEntity>` but its optional (earlier it was a string?)
+        var offset = EngineFeatures.Current.GetOffset(ManagedEngineFeatures.GameRulesFindPickerEntity, "CCSGameRules_FindPickerEntity");
         if (IsWindows.Value)
         {
-            VirtualFunctionWithReturn<CCSGameRules, CBasePlayerController, IntPtr?, CBaseEntity?> CCSGameRules_FindPickerEntity = new(Handle, GameData.GetOffset("CCSGameRules_FindPickerEntity"));
+            VirtualFunctionWithReturn<CCSGameRules, CBasePlayerController, IntPtr?, CBaseEntity?> CCSGameRules_FindPickerEntity =
+                new(Handle, offset);
             return CCSGameRules_FindPickerEntity.Invoke(this, player, null);
         }
         else
         {
-            VirtualFunctionWithReturn<CCSGameRules, CBasePlayerController, IntPtr?, double, double, CBaseEntity?> CCSGameRules_FindPickerEntity = new(Handle, GameData.GetOffset("CCSGameRules_FindPickerEntity"));
+            VirtualFunctionWithReturn<CCSGameRules, CBasePlayerController, IntPtr?, double, double, CBaseEntity?> CCSGameRules_FindPickerEntity =
+                new(Handle, offset);
             return CCSGameRules_FindPickerEntity.Invoke(this, player, null, 0, 0); // on linux we have a fourth and fifth parameter aswell, but they are unused because the condition for them is always unmet.
         }
     }
 
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.game-rules/find-picker-entity</c> is
+    /// disabled</exception>
     public T? FindPickerEntity<T>(CBasePlayerController player) where T : CBaseEntity
     {
         CBaseEntity? entity = FindPickerEntityInternal(player);
@@ -62,6 +69,8 @@ public partial class CCSGameRules
         return (entity?.IsValid ?? false) ? entity.As<T>() : null;
     }
 
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.game-rules/find-picker-entity</c> is
+    /// disabled</exception>
     public CCSPlayerController? GetClientAimTarget(CCSPlayerController player)
     {
         CCSPlayerPawn? pawn = FindPickerEntity<CCSPlayerPawn>(player);

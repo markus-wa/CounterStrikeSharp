@@ -19,6 +19,7 @@
 #include "convar.h"
 #include "core/detours.h"
 #include "core/coreconfig.h"
+#include "core/core_bindings.h"
 #include "core/game_system.h"
 #include "core/gameconfig.h"
 #include "core/gameconfig_updater.h"
@@ -163,6 +164,8 @@ bool CounterStrikeSharpMMPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, s
         }
 
         globals::Initialize();
+        bindings::ResolveCoreBindings();
+        globals::InitializeHooks();
 
         CSSHARP_CORE_INFO("Globals loaded.");
         globals::mmPlugin = &gPlugin;
@@ -181,22 +184,26 @@ bool CounterStrikeSharpMMPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, s
         m_hooks.Add(&IEngineServiceMgr::FindService, globals::engineServiceManager, this, nullptr,
                     &CounterStrikeSharpMMPlugin::Hook_FindService);
 
-        auto pCGameEventManagerVTable = (IGameEventManager2*)modules::server->FindVirtualTable("CGameEventManager");
+        // Gated with the CGameEventManager_Init hook in globals::InitializeHooks (which logs when game events are disabled).
+        if (bindings::IsEngineFeatureAvailable(bindings::features::GameEvents))
+            m_hooks.AddGlobal(&IGameEventManager2::LoadEventsFromFile,
+                              reinterpret_cast<void**>(bindings::GetBindingAddress("CGameEventManager")), this,
+                              &CounterStrikeSharpMMPlugin::Hook_LoadEventsFromFile, nullptr);
 
-        m_hooks.AddGlobal(&IGameEventManager2::LoadEventsFromFile, reinterpret_cast<void**>(pCGameEventManagerVTable), this,
-                          &CounterStrikeSharpMMPlugin::Hook_LoadEventsFromFile, nullptr);
-
-        if (!InitGameSystems())
+        // .NET failing to start is fatal (ADR-0002): CounterStrikeSharp refuses to load. Undo what the managers registered
+        // with the engine; the guard removes every hook. Before the game system, which cannot be taken out again.
+        if (!globals::dotnetManager.Initialize())
         {
-            CSSHARP_CORE_ERROR("Failed to initialize GameSystem!");
+            CSSHARP_CORE_ERROR("Failed to initialize .NET runtime, CounterStrikeSharp will not load");
+            CALL_GLOBAL_LISTENER(OnShutdown());
+            snprintf(error, maxlen, "Failed to initialize .NET runtime");
             return false;
         }
 
-        CSSHARP_CORE_INFO("Initialized GameSystem.");
-
-        if (!globals::dotnetManager.Initialize())
+        // A disabled cssharp.server/game-system-events is reported with the other Engine Features, not here.
+        if (InitGameSystems())
         {
-            CSSHARP_CORE_ERROR("Failed to initialize .NET runtime");
+            CSSHARP_CORE_INFO("Initialized GameSystem.");
         }
 
         CSSHARP_CORE_INFO("Hooks added.");

@@ -20,6 +20,7 @@
 #include <ios>
 #include <sstream>
 
+#include "core/core_bindings.h"
 #include "core/log.h"
 #include "core/managers/entity_manager.h"
 #include "core/managers/player_manager.h"
@@ -102,6 +103,13 @@ void DispatchSpawn(ScriptContext& scriptContext)
 {
     auto entity = scriptContext.GetArgument<void*>(0);
     auto keyValues = scriptContext.GetArgument<CEntityKeyValues*>(1);
+
+    if (!CBaseEntity_DispatchSpawn)
+    {
+        scriptContext.ThrowNativeError("%s", bindings::DescribeUnavailable(bindings::features::EntityDispatchSpawn).c_str());
+        return;
+    }
+
     CBaseEntity_DispatchSpawn(entity, keyValues);
 }
 
@@ -542,7 +550,7 @@ void AcceptInput(ScriptContext& script_context)
 {
     if (!CEntityInstance_AcceptInput)
     {
-        script_context.ThrowNativeError("Failed to find signature for \'CEntityInstance_AcceptInput\'");
+        script_context.ThrowNativeError("%s", bindings::DescribeUnavailable(bindings::features::EntityAcceptInput).c_str());
         return;
     }
 
@@ -561,7 +569,7 @@ void AddEntityIOEvent(ScriptContext& script_context)
 {
     if (!CEntitySystem_AddEntityIOEvent)
     {
-        script_context.ThrowNativeError("Failed to find signature for \'CEntitySystem_AddEntityIOEvent\'");
+        script_context.ThrowNativeError("%s", bindings::DescribeUnavailable(bindings::features::EntityAddIoEvent).c_str());
         return;
     }
 
@@ -583,6 +591,12 @@ SoundEventGuid_t EmitSoundFilter(ScriptContext& script_context)
     auto sound = script_context.GetArgument<const char*>(2);
     auto volume = script_context.GetArgument<float>(3);
     auto pitch = script_context.GetArgument<float>(4);
+
+    if (!CBaseEntity_EmitSoundFilter)
+    {
+        script_context.ThrowNativeError("%s", bindings::DescribeUnavailable(bindings::features::EntityEmitSound).c_str());
+        return 0;
+    }
 
     CRecipientFilter filter{};
     filter.AddRecipientsFromMask(filtermask);

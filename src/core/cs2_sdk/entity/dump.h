@@ -1,4 +1,5 @@
 #include "core/cs2_sdk/schema.h"
+#include "core/core_bindings.h"
 #include "core/gameconfig.h"
 #include "core/globals.h"
 #include "entity2/variant.h"
@@ -187,8 +188,10 @@ class CBaseEntity : public CEntityInstance
   public:
     bool IsPawn()
     {
-        static int offset = counterstrikesharp::globals::gameConfig->GetOffset("CBaseEntity_IsPlayerPawn");
-        return CALL_VIRTUAL(bool, offset, this);
+        // False while the Binding is unresolved: never calls through an unresolved vtable index.
+        static const auto offset = counterstrikesharp::bindings::GetBindingOffset("CBaseEntity_IsPlayerPawn");
+        if (!offset) return false;
+        return CALL_VIRTUAL(bool, static_cast<int>(*offset), this);
     }
 };
 

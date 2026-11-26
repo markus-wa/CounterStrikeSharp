@@ -150,7 +150,13 @@ namespace CounterStrikeSharp.API.Core
             var subscriber = new CallbackSubscriber(handler, handler,
                 () => DeregisterEventHandler(name, handler, post));
 
-            NativeAPI.HookEvent(name, subscriber.GetInputArgument(), post);
+            // Game events disabled: the handler stays registered (deregistering still works) but never fires.
+            if (EngineFeatures.Current.CheckRegistration(EngineFeatureNames.EventsGameEvents, "Game event handler",
+                    Logger ?? Application.Instance.Logger, this))
+            {
+                NativeAPI.HookEvent(name, subscriber.GetInputArgument(), post);
+            }
+
             Handlers[handler] = subscriber;
         }
 
@@ -293,6 +299,10 @@ namespace CounterStrikeSharp.API.Core
 
             Application.Instance.Logger.LogDebug("Registering listener for {ListenerName} with {ParameterCount} parameters",
                 listenerName, parameterTypes.Length);
+
+            // Registers either way; on a disabled Engine Feature the listener never fires, so say so once.
+            Bindings.ListenerEngineFeatures.CheckRegistration(EngineFeatures.Current, listenerName,
+                Logger ?? Application.Instance.Logger, this);
 
             var wrappedHandler = new Func<ScriptContext, HookResult>(context =>
             {
@@ -595,7 +605,13 @@ namespace CounterStrikeSharp.API.Core
             var subscriber = new CallbackSubscriber(handler, handler,
                 () => UnhookEntityOutput(classname, outputName, handler));
 
-            NativeAPI.HookEntityOutput(classname, outputName, subscriber.GetInputArgument(), mode);
+            // On a disabled Engine Feature the hook stays registered but never fires (logged once).
+            if (EngineFeatures.Current.CheckRegistration(EngineFeatureNames.EntityOutputHooks, "Entity output hook",
+                    Logger ?? Application.Instance.Logger, this))
+            {
+                NativeAPI.HookEntityOutput(classname, outputName, subscriber.GetInputArgument(), mode);
+            }
+
             EntityOutputHooks[handler] = subscriber;
         }
 

@@ -2,6 +2,7 @@ using FastGenericNew;
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using CounterStrikeSharp.API.Core.Bindings;
 using CounterStrikeSharp.API.Modules.Memory;
 using CounterStrikeSharp.API.Modules.Utils;
 using Vector = CounterStrikeSharp.API.Modules.Utils.Vector;
@@ -12,6 +13,7 @@ public partial class CBaseEntity
 {
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
     /// <exception cref="ArgumentNullException">At least one parameter must be specified</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/teleport</c> is disabled</exception>
     public void Teleport(Vector? position = null, QAngle? angles = null, Vector? velocity = null)
     {
         Teleport(position == null ? null : (Vector3)position, angles == null ? null : (Vector3)angles,
@@ -24,8 +26,10 @@ public partial class CBaseEntity
     /// </summary>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
     /// <exception cref="ArgumentException">At least one parameter must be specified</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/teleport</c> is disabled</exception>
     public void Teleport(Vector3? position = null, Vector3? angles = null, Vector3? velocity = null)
     {
+        var offset = EngineFeatures.Current.GetOffset(ManagedEngineFeatures.EntityTeleport, "CBaseEntity_Teleport");
         Guard.IsValidEntity(this);
 
         if (position == null && angles == null && velocity == null)
@@ -53,22 +57,26 @@ public partial class CBaseEntity
                 velocityPtr = &vel;
             }
 
-            VirtualFunction.CreateVoid<IntPtr, IntPtr, IntPtr, IntPtr>(Handle, GameData.GetOffset("CBaseEntity_Teleport"))(Handle,
+            VirtualFunction.CreateVoid<IntPtr, IntPtr, IntPtr, IntPtr>(Handle, offset)(Handle,
                 (nint)positionPtr,
                 (nint)anglePtr, (nint)velocityPtr);
         }
     }
 
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/dispatch-spawn</c> is disabled</exception>
     public void DispatchSpawn(CEntityKeyValues? keyValues)
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.EntityDispatchSpawn);
         Guard.IsValidEntity(this);
 
         NativeAPI.DispatchSpawn(Handle, keyValues?.Handle ?? IntPtr.Zero);
     }
 
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/dispatch-spawn</c> is disabled</exception>
     public void DispatchSpawn()
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.EntityDispatchSpawn);
         Guard.IsValidEntity(this);
         NativeAPI.DispatchSpawn(Handle, IntPtr.Zero);
     }
@@ -99,8 +107,10 @@ public partial class CBaseEntity
     /// <param name="volume">The volume of the soundevent.</param>
     /// <param name="pitch">The pitch of the soundevent.</param>
     /// <returns>The sound event guid.</returns>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/emit-sound</c> is disabled</exception>
     public uint EmitSound(string soundEventName, RecipientFilter? recipients = null, float volume = 1f, float pitch = 0)
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.EntityEmitSound);
         Guard.IsValidEntity(this);
 
         if (recipients == null)
@@ -115,10 +125,13 @@ public partial class CBaseEntity
     /// <summary>
     /// Returns true if the entity is a player pawn.
     /// </summary>
+    /// <exception cref="EngineFeatureUnavailableException">The <c>cssharp.entity/take-damage-hooks</c> Engine Feature is
+    /// disabled.</exception>
     public bool IsPlayerPawn()
     {
+        var offset = EngineFeatures.Current.GetOffset(ManagedEngineFeatures.EntityTakeDamageHooks, "CBaseEntity_IsPlayerPawn");
         Guard.IsValidEntity(this);
 
-        return VirtualFunction.Create<IntPtr, bool>(Handle, GameData.GetOffset("CBaseEntity_IsPlayerPawn"))(Handle);
+        return VirtualFunction.Create<IntPtr, bool>(Handle, offset)(Handle);
     }
 }

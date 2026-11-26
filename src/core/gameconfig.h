@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/binding_resolver.h"
 #include "core/globals.h"
 #include "core/memory_module.h"
 #include <tier0/keyvalues.h>
@@ -21,15 +22,9 @@ class CGameConfig
 
     bool Init(char* conf_error, int conf_error_size);
     const std::string GetPath();
-    const char* GetLibrary(const std::string& name);
-    const char* GetSignature(const std::string& name);
-    const char* GetSymbol(const char* name);
-    const char* GetPatch(const std::string& name);
-    int GetOffset(const std::string& name);
-    void* GetAddress(const std::string& name, void* engine, void* server, char* error, int maxlen);
-    modules::CModule** GetModule(const char* name);
-    bool IsSymbol(const char* name);
-    void* ResolveSignature(const char* name);
+    // Gamedata as the Binding resolver reads it, for this OS. Core code never looks keys up itself: it asks the
+    // Resolution Report (core/core_bindings.h).
+    const bindings::Gamedata& GetGamedata() const { return m_gamedata; }
 
     static std::string GetDirectoryName(const std::string& directoryPathInput);
     static std::vector<int16_t> HexToByte(std::string_view src);
@@ -39,11 +34,7 @@ class CGameConfig
     // use Valve KeyValues in the future.
     // since we'd better make '\' easier.
     json m_json;
-    std::unordered_map<std::string, int> m_umOffsets;
-    std::unordered_map<std::string, std::string> m_umSignatures;
-    std::unordered_map<std::string, void*> m_umAddresses;
-    std::unordered_map<std::string, std::string> m_umLibraries;
-    std::unordered_map<std::string, std::string> m_umPatches;
+    bindings::Gamedata m_gamedata;
 };
 
 } // namespace counterstrikesharp

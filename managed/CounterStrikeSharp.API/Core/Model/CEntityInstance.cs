@@ -32,6 +32,7 @@ public partial class CEntityInstance : IEquatable<CEntityInstance>
     
     public string DesignerName => IsValid ? Entity?.DesignerName : null;
 
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/remove</c> is disabled</exception>
     public void Remove()
     {
         Guard.IsValidEntity(this);
@@ -78,8 +79,10 @@ public partial class CEntityInstance : IEquatable<CEntityInstance>
     /// <param name="value">String variant value to send with the event</param>
     /// <param name="outputId">Unknown, defaults to 0</param>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/accept-input</c> is disabled</exception>
     public void AcceptInput(string inputName, CEntityInstance? activator = null, CEntityInstance? caller = null, string value = "", int outputId = 0)
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.EntityAcceptInput);
         Guard.IsValidEntity(this);
 
         NativeAPI.AcceptInput(Handle, inputName, activator?.Handle ?? IntPtr.Zero, caller?.Handle ?? IntPtr.Zero, value, outputId);
@@ -101,8 +104,10 @@ public partial class CEntityInstance : IEquatable<CEntityInstance>
     /// <param name="delay">Delay in seconds before calling the input</param>
     /// <param name="outputId">Removed from the current CS2 game ABI</param>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/add-io-event</c> is disabled</exception>
     public void AddEntityIOEvent(string inputName, CEntityInstance? activator = null, CEntityInstance? caller = null, string value = "", float delay = 0, int outputId = 0)
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.EntityAddIoEvent);
         Guard.IsValidEntity(this);
 
         NativeAPI.AddEntityIoEvent(Handle, inputName, activator?.Handle ?? IntPtr.Zero, caller?.Handle ?? IntPtr.Zero, value, delay, outputId);

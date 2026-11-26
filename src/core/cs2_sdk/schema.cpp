@@ -21,9 +21,13 @@
 
 #include "interfaces/cs2_interfaces.h"
 #include "core/globals.h"
+#include "core/core_bindings.h"
 #include "core/gameconfig.h"
 #include "core/memory.h"
 #include "core/log.h"
+
+#include <set>
+#include <utility>
 
 #include "tier0/utlmap.h"
 #include <schemasystem/schemasystem.h>
@@ -34,6 +38,7 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+using counterstrikesharp::bindings::SchemaFieldStatus;
 using SchemaKeyValueMap_t = CUtlOrderedMap<uint32_t, SchemaKey>;
 
 // Tracks whether networked flags were resolved when this table was built.
@@ -41,6 +46,7 @@ struct SchemaClassTable
 {
     SchemaKeyValueMap_t* fields;
     bool networkResolved;
+    bool classFound = true; // false: the class is not in the schema (cached so the warning is logged once)
 };
 
 using SchemaTableMap_t = CUtlOrderedMap<uint32_t, SchemaClassTable>;
@@ -83,7 +89,7 @@ static bool InitSchemaFieldsForClass(SchemaTableMap_t* tableMap, const char* cla
     if (!pClassInfo)
     {
         SchemaKeyValueMap_t* map = new SchemaKeyValueMap_t();
-        tableMap->Insert(classKey, { map, true });
+        tableMap->Insert(classKey, { map, true, false });
 
         Warning("InitSchemaFieldsForClass(): '%s' was not found!\n", className);
         return false;
@@ -144,6 +150,7 @@ int16_t schema::FindChainOffset(const char* className)
     if (!pType) return false;
 
     auto* pClassInfo = pType->FindDeclaredClass(className).Get();
+    if (!pClassInfo) return 0;
 
     do
     {
@@ -158,33 +165,58 @@ int16_t schema::FindChainOffset(const char* className)
                 return field.m_nSingleInheritanceOffset;
             }
         }
-    } while ((pClassInfo = pClassInfo->m_pBaseClasses->m_pClass) != nullptr);
+    } while (pClassInfo->m_nNumBaseClasses > 0 && pClassInfo->m_pBaseClasses &&
+             (pClassInfo = pClassInfo->m_pBaseClasses->m_pClass) != nullptr);
 
     return 0;
 }
 
-SchemaKey schema::GetOffset(const char* className, uint32_t classKey, const char* memberName, uint32_t memberKey)
+schema::FieldLookup schema::LookupField(const char* className, uint32_t classKey, const char* memberName, uint32_t memberKey)
 {
     static SchemaTableMap_t schemaTableMap;
     auto tableMapIndex = schemaTableMap.Find(classKey);
     if (!schemaTableMap.IsValidIndex(tableMapIndex))
     {
-        if (InitSchemaFieldsForClass(&schemaTableMap, className, classKey)) return GetOffset(className, classKey, memberName, memberKey);
-
-        return { 0, 0 };
+        InitSchemaFieldsForClass(&schemaTableMap, className, classKey);
+        tableMapIndex = schemaTableMap.Find(classKey);
+        // Not cached when the type scope is unavailable, so a later lookup retries.
+        if (!schemaTableMap.IsValidIndex(tableMapIndex)) return { SchemaFieldStatus::ClassMissing, { 0, 0 } };
     }
 
     SchemaClassTable& table = schemaTableMap[tableMapIndex];
+    if (!table.classFound) return { SchemaFieldStatus::ClassMissing, { 0, 0 } };
     if (!table.networkResolved && GetNetworkSerializerDatabase() != nullptr) ResolveNetworkedFlags(table, className);
 
     SchemaKeyValueMap_t* tableMap = table.fields;
     auto memberIndex = tableMap->Find(memberKey);
     if (!tableMap->IsValidIndex(memberIndex))
     {
-        return { 0, 0 };
+        return { SchemaFieldStatus::FieldMissing, { 0, 0 } };
     }
 
-    return tableMap->Element(memberIndex);
+    return { SchemaFieldStatus::Found, tableMap->Element(memberIndex) };
+}
+
+std::optional<SchemaKey> schema::FindField(const char* className, const char* memberName)
+{
+    const auto classKey = hash_32_fnv1a_const(className);
+    const auto memberKey = hash_32_fnv1a_const(memberName);
+    const auto lookup = LookupField(className, classKey, memberName, memberKey);
+    if (lookup.status == SchemaFieldStatus::Found) return lookup.key;
+
+    static std::set<std::pair<uint32_t, uint32_t>> loggedMisses;
+    if (loggedMisses.insert({ classKey, memberKey }).second)
+    {
+        CSSHARP_CORE_WARN("Schema field {}::{} not found ({})", className, memberName,
+                          lookup.status == SchemaFieldStatus::ClassMissing ? "class missing" : "field missing");
+    }
+    return std::nullopt;
+}
+
+SchemaKey schema::GetOffset(const char* className, uint32_t classKey, const char* memberName, uint32_t memberKey)
+{
+    const auto lookup = LookupField(className, classKey, memberName, memberKey);
+    return lookup.status == SchemaFieldStatus::Found ? lookup.key : SchemaKey{ 0, 0 };
 }
 
 void NetworkStateChanged(uintptr_t chainEntity, uint32_t offset, uint32_t nArrayIndex, uint32_t nPathIndex)
@@ -197,8 +229,12 @@ void NetworkStateChanged(uintptr_t chainEntity, uint32_t offset, uint32_t nArray
 
 void SetStateChanged(uintptr_t pEntity, uint32_t offset, uint32_t nArrayIndex, uint32_t nPathIndex)
 {
-    CNetworkStateChangedInfo info(offset, nArrayIndex, nPathIndex);
+    using namespace counterstrikesharp::bindings;
+    // No-op while cssharp.network/state-changed is disabled (never calls through an unresolved vtable index).
+    static const auto fnOffset =
+        IsEngineFeatureAvailable(features::StateChanged) ? GetBindingOffset("SetStateChanged") : std::optional<std::int64_t>{};
+    if (!fnOffset) return;
 
-    static auto fnOffset = counterstrikesharp::globals::gameConfig->GetOffset("SetStateChanged");
-    CALL_VIRTUAL(void, fnOffset, (void*)pEntity, &info);
+    CNetworkStateChangedInfo info(offset, nArrayIndex, nPathIndex);
+    CALL_VIRTUAL(void, static_cast<int>(*fnOffset), (void*)pEntity, &info);
 }

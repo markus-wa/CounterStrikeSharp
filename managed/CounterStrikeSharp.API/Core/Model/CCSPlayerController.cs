@@ -1,4 +1,5 @@
 using System;
+using CounterStrikeSharp.API.Core.Bindings;
 using CounterStrikeSharp.API.Modules.Cvars;
 using CounterStrikeSharp.API.Modules.Entities;
 using CounterStrikeSharp.API.Modules.Entities.Constants;
@@ -14,11 +15,13 @@ public partial class CCSPlayerController
     public CsTeam Team => (CsTeam)TeamNum;
 
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.items/give-named-item</c> is disabled</exception>
     public IntPtr GiveNamedItem(string item)
     {
         return GiveNamedItem<CEntityInstance>(item)?.Handle ?? IntPtr.Zero;
     }
 
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.items/give-named-item</c> is disabled</exception>
     public T? GiveNamedItem<T>(string item) where T : CEntityInstance
     {
         Guard.IsValidEntity(this);
@@ -26,6 +29,7 @@ public partial class CCSPlayerController
         return PlayerPawn.Value?.ItemServices?.As<CCSPlayer_ItemServices>().GiveNamedItem<T>(item);
     }
 
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.items/give-named-item</c> is disabled</exception>
     public IntPtr GiveNamedItem(CsItem item)
     {
         string? itemString = EnumUtils.GetEnumMemberAttributeValue(item);
@@ -69,9 +73,13 @@ public partial class CCSPlayerController
         NativeAPI.ClientPrint(this.Slot, (int)HudDestination.Alert, message);
     }
 
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.events/fire-event-to-client</c> or
+    /// <c>cssharp.events/game-events</c> is disabled</exception>
     public void PrintToCenterHtml(string message) => PrintToCenterHtml(message, 5);
 
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.events/fire-event-to-client</c> or
+    /// <c>cssharp.events/game-events</c> is disabled</exception>
     public void PrintToCenterHtml(string message, int duration)
     {
         Guard.IsValidEntity(this);
@@ -90,6 +98,7 @@ public partial class CCSPlayerController
     /// Drops the active player weapon on the ground.
     /// </summary>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.items/drop-active-weapon</c> is disabled</exception>
     public void DropActiveWeapon()
     {
         Guard.IsValidEntity(this);
@@ -106,6 +115,7 @@ public partial class CCSPlayerController
     /// Removes every weapon from the player.
     /// </summary>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.items/remove-weapons</c> is disabled</exception>
     public void RemoveWeapons()
     {
         Guard.IsValidEntity(this);
@@ -119,6 +129,7 @@ public partial class CCSPlayerController
     /// <param name="explode"></param>
     /// <param name="force"></param>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/commit-suicide</c> is disabled</exception>
     public void CommitSuicide(bool explode, bool force)
     {
         Guard.IsValidEntity(this);
@@ -130,14 +141,17 @@ public partial class CCSPlayerController
     /// Respawn player
     /// </summary>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/respawn</c> or <c>cssharp.player/set-pawn</c>
+    /// is disabled</exception>
     public void Respawn()
     {
+        var offset = EngineFeatures.Current.GetOffset(ManagedEngineFeatures.PlayerRespawn, "CCSPlayerController_Respawn");
         Guard.IsValidEntity(this);
         if (PlayerPawn.Value == null) return;
 
         // The Call To Arms update appears to have invalidated the need for CCSPlayerPawn_Respawn.
         SetPawn(PlayerPawn.Value);
-        VirtualFunction.CreateVoid<IntPtr>(Handle, GameData.GetOffset("CCSPlayerController_Respawn"))(Handle);
+        VirtualFunction.CreateVoid<IntPtr>(Handle, offset)(Handle);
     }
 
     public bool IsBot => ((PlayerFlags)Flags).HasFlag(PlayerFlags.FL_FAKECLIENT);
@@ -147,6 +161,7 @@ public partial class CCSPlayerController
     /// </summary>
     /// <param name="team">The team to switch to</param>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/switch-team</c> is disabled</exception>
     public void SwitchTeam(CsTeam team)
     {
         Guard.IsValidEntity(this);
@@ -162,12 +177,13 @@ public partial class CCSPlayerController
     /// </summary>
     /// <param name="team">The team to change to</param>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/change-team</c> is disabled</exception>
     public void ChangeTeam(CsTeam team)
     {
+        var offset = EngineFeatures.Current.GetOffset(ManagedEngineFeatures.PlayerChangeTeam, "CCSPlayerController_ChangeTeam");
         Guard.IsValidEntity(this);
 
-        VirtualFunction.CreateVoid<IntPtr, CsTeam>(Handle, GameData.GetOffset("CCSPlayerController_ChangeTeam"))(Handle,
-            team);
+        VirtualFunction.CreateVoid<IntPtr, CsTeam>(Handle, offset)(Handle, team);
     }
 
     /// <summary>
@@ -341,6 +357,7 @@ public partial class CCSPlayerController
         }
     }
 
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/teleport</c> is disabled</exception>
     [Obsolete(
         "You are trying to call Teleport on a non-physical player. Maybe you mean Pawn? (See: https://docs.cssharp.dev/docs/guides/referencing-players.html#controllers--pawns)")]
     public new void Teleport(Vector? position = null, QAngle? angles = null, Vector? velocity = null)

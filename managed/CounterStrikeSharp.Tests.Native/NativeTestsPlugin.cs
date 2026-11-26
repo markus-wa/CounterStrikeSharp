@@ -52,6 +52,11 @@ namespace NativeTestsPlugin
             SchemaTests.CacheOffsetsOnLoad();
             EntitySystemTests.LookUpEntitiesOnLoad();
             GameRulesTests.AskOnLoad();
+            // Registered through the plugin API at load, so E2E sees the one-time warning when their Engine Feature
+            // (cssharp.events/game-events, cssharp.network/check-transmit) is disabled; both do nothing.
+            RegisterEventHandler<EventRoundStart>((_, _) => HookResult.Continue);
+            RegisterListener<Listeners.CheckTransmit>(_ => { });
+            GameSystemTests.RegisterOnLoad(this);
             // Loading blocks the game thread, so we use NextFrame to run our tests asynchronously.
             // Uncomment to run the tests on load
             // Server.NextWorldUpdate(() => RunTests());
@@ -80,6 +85,59 @@ namespace NativeTestsPlugin
             var runId = command.GetArg(1);
             if (player != null || !Regex.IsMatch(runId, @"\A[a-zA-Z0-9-]{1,80}\z")) return;
             _ = RunTests(smokeRunId: runId);
+        }
+
+        // Prints what a plugin sees through the public Engine Feature API; the E2E harness greps it.
+        [ConsoleCommand("css_engine_features", "Print every Engine Feature and its status as plugins see it.")]
+        public void OnCommandEngineFeatures(CCSPlayerController? player, CommandInfo command)
+        {
+            Console.WriteLine($"[EngineFeatures] build {EngineFeatures.BuildId}");
+            foreach (var status in EngineFeatures.GetAll())
+            {
+                Console.WriteLine($"[EngineFeatures] {status}");
+            }
+
+            Console.WriteLine($"[EngineFeatures] say-hooks via enum: available={EngineFeatures.IsAvailable(EngineFeature.ChatSayHooks)}, " +
+                              $"reason={EngineFeatures.GetStatus(EngineFeature.ChatSayHooks).Reason}");
+        }
+
+        // Take-damage Engine Features as a plugin sees them; the E2E harness greps the output. Registers the
+        // take-damage listeners (registering never throws; on a disabled Engine Feature it warns once), reads a hit group
+        // and creates a memory function from a raw plugin signature, which must work even without the take-damage key.
+        [ConsoleCommand("css_take_damage_probe", "Register take-damage listeners and use the take-damage helpers.")]
+        public void OnCommandTakeDamageProbe(CCSPlayerController? player, CommandInfo command)
+        {
+            RegisterListener<Listeners.OnEntityTakeDamagePre>((_, _) =>
+            {
+                Console.WriteLine("[TakeDamageProbe] OnEntityTakeDamagePre fired");
+                return HookResult.Continue;
+            });
+            RegisterListener<Listeners.OnPlayerTakeDamagePre>((_, _) =>
+            {
+                Console.WriteLine("[TakeDamageProbe] OnPlayerTakeDamagePre fired");
+                return HookResult.Continue;
+            });
+            Console.WriteLine("[TakeDamageProbe] registered take-damage listeners");
+
+            // Zeroed fake CTakeDamageInfo: an available hit group reads as HITGROUP_INVALID.
+            var buffer = System.Runtime.InteropServices.Marshal.AllocHGlobal(1024);
+            try
+            {
+                for (var i = 0; i < 1024; i++) System.Runtime.InteropServices.Marshal.WriteByte(buffer, i, 0);
+                Console.WriteLine($"[TakeDamageProbe] hit group: {new CTakeDamageInfo(buffer).GetHitGroup()}");
+            }
+            catch (EngineFeatureUnavailableException e)
+            {
+                Console.WriteLine($"[TakeDamageProbe] hit group: {e.GetType().Name}: {e.Message}");
+            }
+            finally
+            {
+                System.Runtime.InteropServices.Marshal.FreeHGlobal(buffer);
+            }
+
+            var postThink = new CounterStrikeSharp.API.Modules.Memory.DynamicFunctions.MemoryFunctionVoid<CCSPlayerPawn>(
+                GameData.GetSignature("CCSPlayerPawnBase_PostThink"));
+            Console.WriteLine($"[TakeDamageProbe] raw signature memory function bound: {postThink.RawHandle != IntPtr.Zero}");
         }
 
         public async Task RunTests(string? filter = null, string? smokeRunId = null)

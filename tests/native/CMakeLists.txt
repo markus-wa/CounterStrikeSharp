@@ -51,6 +51,7 @@ set(CSSHARP_TEST_SOURCES
     real_binary_test.cpp
     engine_server_test.cpp
     contract_test.cpp
+    kill_switch_test.cpp
 )
 
 # Vendored x86-64 decoder (plain files, no submodule); the plugin tree may have added it already.

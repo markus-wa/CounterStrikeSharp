@@ -9,6 +9,9 @@
 namespace counterstrikesharp::bindings {
 namespace {
 
+// The top-level Gamedata key of the feature-level Kill Switches.
+constexpr std::string_view kDisabledEngineFeatures = "disabledEngineFeatures";
+
 BindingResult Failed(BindingResult result, FailureReason reason)
 {
     result.status = BindingStatus::Failed;
@@ -48,6 +51,7 @@ BindingResult ResolveSignature(BindingResult result, const Gamedata& gamedata, c
     const auto entry = gamedata.find(result.key);
     if (entry == gamedata.end() || !entry->second.hasSignatures) return Failed(std::move(result), FailureReason::MissingFromGamedata);
     if (!entry->second.signature) return Failed(std::move(result), FailureReason::MissingForThisOs);
+    if (entry->second.signature->empty()) return Failed(std::move(result), FailureReason::DisabledByGamedata);
     if (!entry->second.library) return Failed(std::move(result), FailureReason::MissingFromGamedata);
 
     result.library = *entry->second.library;
@@ -87,6 +91,7 @@ BindingResult ResolveOffset(BindingResult result, const Gamedata& gamedata)
 {
     const auto entry = gamedata.find(result.key);
     if (entry == gamedata.end() || !entry->second.hasOffsets) return Failed(std::move(result), FailureReason::MissingFromGamedata);
+    if (entry->second.offsetBlank) return Failed(std::move(result), FailureReason::DisabledByGamedata);
     if (!entry->second.offset) return Failed(std::move(result), FailureReason::MissingForThisOs);
 
     result.status = BindingStatus::Resolved;
@@ -193,6 +198,7 @@ BindingResult ResolveSlot(
         if (slot->library) result.library = *slot->library;
     }
     if (hasEntry && entry->second.offset) result.slot->statedIndex = *entry->second.offset;
+    if (hasEntry && entry->second.offsetBlank) return Failed(std::move(result), FailureReason::DisabledByGamedata);
 
     // No Vtable Check on Windows: the Gamedata index if there is one, else the caller's compiled header index (-1), if
     // it has one.
@@ -302,16 +308,39 @@ Gamedata ParseGamedata(const nlohmann::json& root, std::string_view platform)
                 entry.hasOffsets = true;
                 if (const auto offset = offsets->find(os); offset != offsets->end() && offset->is_number_integer())
                     entry.offset = offset->get<std::int64_t>();
+                else if (offset != offsets->end() && offset->is_null())
+                    entry.offsetBlank = true;
             }
             if (const auto slot = value.find("vtable"); slot != value.end() && slot->is_object()) entry.slot = ParseSlot(*slot, os);
         }
-        gamedata.emplace(key, std::move(entry));
+        if (key != kDisabledEngineFeatures) gamedata.emplace(key, std::move(entry));
     }
     return gamedata;
 }
 
-ResolutionReport::ResolutionReport(std::string buildId, std::vector<BindingResult> bindings)
-    : m_buildId(std::move(buildId)), m_bindings(std::move(bindings))
+std::vector<EngineFeatureKill> ParseKillSwitches(const nlohmann::json& root, std::span<const std::string> forceEnabled)
+{
+    std::vector<EngineFeatureKill> kills;
+    if (!root.is_object()) return kills;
+    const auto list = root.find(kDisabledEngineFeatures);
+    if (list == root.end() || !list->is_array()) return kills;
+
+    for (const auto& item : *list)
+    {
+        if (!item.is_object()) continue;
+        const auto id = item.find("id");
+        if (id == item.end() || !id->is_string()) continue;
+        const auto reason = item.find("reason");
+        EngineFeatureKill kill{ id->get<std::string>(),
+                                reason != item.end() && reason->is_string() ? reason->get<std::string>() : "no reason given" };
+        kill.forced = std::find(forceEnabled.begin(), forceEnabled.end(), kill.id) != forceEnabled.end();
+        kills.push_back(std::move(kill));
+    }
+    return kills;
+}
+
+ResolutionReport::ResolutionReport(std::string buildId, std::vector<BindingResult> bindings, std::vector<EngineFeatureKill> killSwitches)
+    : m_buildId(std::move(buildId)), m_bindings(std::move(bindings)), m_killSwitches(std::move(killSwitches))
 {
     // The first Binding of a key wins, as a scan in order would find it.
     for (std::size_t position = 0; position < m_bindings.size(); ++position)
@@ -382,12 +411,35 @@ ResolutionReport ResolveBindings(std::string buildId,
 
 EngineFeatureStatus EvaluateEngineFeature(const ResolutionReport& report, const EngineFeatureDeclaration& feature)
 {
+    const auto& kills = report.KillSwitches();
+    const auto kill = std::find_if(kills.begin(), kills.end(), [&](const EngineFeatureKill& candidate) {
+        return candidate.id == feature.name && !candidate.forced;
+    });
+    if (kill != kills.end()) return { false, nullptr, &*kill };
+
     for (const auto& declaration : feature.bindings)
     {
         const auto* binding = report.Find(declaration.key);
         if (binding == nullptr || !binding->Resolved()) return { false, binding };
     }
     return { true, nullptr };
+}
+
+std::vector<std::string> FormatForceEnableWarnings(std::span<const EngineFeatureKill> kills, std::span<const std::string> forceEnabled)
+{
+    std::vector<std::string> lines;
+    for (const auto& id : forceEnabled)
+    {
+        const auto kill = std::find_if(kills.begin(), kills.end(), [&](const EngineFeatureKill& candidate) {
+            return candidate.id == id;
+        });
+        if (kill == kills.end())
+            lines.push_back("ForceEnableEngineFeatures names " + id + ", which no Kill Switch disables; ignored");
+        else
+            lines.push_back("Engine Feature " + id + " is forced on by operator (ForceEnableEngineFeatures) although Gamedata disables it: " +
+                            kill->reason);
+    }
+    return lines;
 }
 
 std::string DescribeFailure(const BindingResult& binding)
@@ -418,6 +470,8 @@ std::string DescribeFailure(const BindingResult& binding)
             return "ambiguous heal (" + std::to_string(binding.matchCount) + " matches)";
         case FailureReason::CompiledSlotMoved:
             return "compiled call's slot moved";
+        case FailureReason::DisabledByGamedata:
+            return "disabled by gamedata";
     }
     return "unknown";
 }
@@ -425,6 +479,8 @@ std::string DescribeFailure(const BindingResult& binding)
 std::string DescribeUnavailable(const ResolutionReport& report, const EngineFeatureDeclaration& feature)
 {
     const std::string prefix = "Engine Feature " + feature.name;
+    if (const auto* kill = EvaluateEngineFeature(report, feature).killSwitch)
+        return prefix + " is disabled (disabled by gamedata: " + kill->reason + ")";
     for (const auto& declaration : feature.bindings)
     {
         const auto* binding = report.Find(declaration.key);
@@ -579,6 +635,8 @@ const char* ReasonName(FailureReason reason)
             return "AmbiguousHeal";
         case FailureReason::CompiledSlotMoved:
             return "CompiledSlotMoved";
+        case FailureReason::DisabledByGamedata:
+            return "DisabledByGamedata";
     }
     return "Unknown";
 }
@@ -627,9 +685,15 @@ std::string ResolutionReportToJson(const ResolutionReport& report, std::span<con
         features.push_back({ { "name", feature.name }, { "bindings", std::move(keys) } });
     }
 
-    return nlohmann::json{
-        { "buildId", report.BuildId() }, { "bindings", std::move(bindings) }, { "features", std::move(features) }
-    }.dump();
+    auto killSwitches = nlohmann::json::array();
+    for (const auto& kill : report.KillSwitches())
+        killSwitches.push_back({ { "id", kill.id }, { "reason", kill.reason }, { "forced", kill.forced } });
+
+    return nlohmann::json{ { "buildId", report.BuildId() },
+                           { "bindings", std::move(bindings) },
+                           { "features", std::move(features) },
+                           { "killSwitches", std::move(killSwitches) } }
+        .dump();
 }
 
 std::string ParseBuildId(std::string_view steamInf)

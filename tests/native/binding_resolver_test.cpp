@@ -116,7 +116,6 @@ TEST_CASE("A signature with invalid hex fails as invalid pattern")
     FakeModule server{ { { 0x55, 0x48 } } };
 
     CHECK(ResolveSignature("55 GG", server).reason == FailureReason::InvalidPattern);
-    CHECK(ResolveSignature("", server).reason == FailureReason::InvalidPattern);
     CHECK(ResolveSignature("@", server).reason == FailureReason::InvalidPattern);
 }
 

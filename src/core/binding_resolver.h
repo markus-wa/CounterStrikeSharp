@@ -49,17 +49,32 @@ struct GamedataEntry
 {
     bool hasSignatures = false;
     std::optional<std::string> library; // "signatures.library"
-    std::optional<std::string> signature; // "signatures.<os>"
+    std::optional<std::string> signature; // "signatures.<os>"; "" is a Kill Switch
     bool hasOffsets = false;
     std::optional<std::int64_t> offset; // "offsets.<os>"
+    bool offsetBlank = false; // "offsets.<os>": null, a Kill Switch (for a Slot Binding: its slot index)
     std::optional<SlotGamedata> slot; // "vtable", if present
 };
 
 using Gamedata = std::map<std::string, GamedataEntry, std::less<>>;
 
 // Reads the Gamedata json for one platform ("linux" or "windows"). Never throws on unexpected shapes; anything it
-// cannot read is simply absent, and the resolver reports it.
+// cannot read is simply absent, and the resolver reports it. "disabledEngineFeatures" is not a Binding (see
+// ParseKillSwitches).
 Gamedata ParseGamedata(const nlohmann::json& root, std::string_view platform);
+
+// A Kill Switch on a whole Engine Feature (ADR-0006): Gamedata deliberately disables it, whatever its Bindings resolve
+// to. A Kill Switch on one Binding is a blank value instead (FailureReason::DisabledByGamedata). Append fields only.
+struct EngineFeatureKill
+{
+    std::string id; // the Engine Feature's stable name
+    std::string reason;
+    bool forced = false; // the operator's ForceEnableEngineFeatures names it: the Engine Feature stays available
+};
+
+// Gamedata's top-level "disabledEngineFeatures": [{ "id", "reason" }], in order. Entries without a string id are
+// skipped; a missing reason reads "no reason given". forceEnabled is the operator's ForceEnableEngineFeatures.
+std::vector<EngineFeatureKill> ParseKillSwitches(const nlohmann::json& root, std::span<const std::string> forceEnabled);
 
 enum class BindingKind : std::uint8_t
 {
@@ -140,6 +155,7 @@ enum class FailureReason : std::uint8_t
     FingerprintMismatch, // Slot Binding: the fingerprint window does not match the live vtable
     AmbiguousHeal, // Slot Binding: the window does not match at its index and matches more than once nearby; see matchCount
     CompiledSlotMoved, // Slot Binding of a compiled call: verified (or healed) at another index than the compiled one
+    DisabledByGamedata, // a Kill Switch: blank in Gamedata for this OS (empty signature, null offset or slot index)
 };
 
 // A Slot Binding's Vtable Check, as evidence for the report.
@@ -179,16 +195,19 @@ class ResolutionReport
 {
   public:
     ResolutionReport() = default;
-    ResolutionReport(std::string buildId, std::vector<BindingResult> bindings);
+    ResolutionReport(std::string buildId, std::vector<BindingResult> bindings, std::vector<EngineFeatureKill> killSwitches = {});
 
     [[nodiscard]] const std::string& BuildId() const { return m_buildId; }
     [[nodiscard]] const std::vector<BindingResult>& Bindings() const { return m_bindings; }
     // By key, through an index built with the report (no scan): native code reads Bindings by key on hot paths.
     [[nodiscard]] const BindingResult* Find(std::string_view key) const;
+    // Gamedata's feature-level Kill Switches, as ParseKillSwitches read them (names not checked against any catalog).
+    [[nodiscard]] const std::vector<EngineFeatureKill>& KillSwitches() const { return m_killSwitches; }
 
   private:
     std::string m_buildId;
     std::vector<BindingResult> m_bindings;
+    std::vector<EngineFeatureKill> m_killSwitches;
     std::map<std::string, std::size_t, std::less<>> m_index; // key -> position in m_bindings
 };
 
@@ -262,10 +281,17 @@ struct EngineFeatureStatus
 {
     bool available = false;
     const BindingResult* failedBinding = nullptr; // first failed Binding; nullptr if available or not in the report
+    const EngineFeatureKill* killSwitch = nullptr; // the Kill Switch in force on the feature (not forced on), if any
 };
 
-// Available exactly when every Binding of the feature resolved in the report.
+// Available exactly when every Binding of the feature resolved in the report and no Kill Switch in force names it. A
+// Kill Switch in force is reported in place of a failed Binding; forcing it on never hides a failed Binding.
 EngineFeatureStatus EvaluateEngineFeature(const ResolutionReport& report, const EngineFeatureDeclaration& feature);
+
+// One warning per Engine Feature the operator forces on against a Kill Switch, and per ForceEnableEngineFeatures entry
+// that names no Kill Switch, e.g. "Engine Feature cssharp.server/game-system-events is forced on by operator
+// (ForceEnableEngineFeatures) although Gamedata disables it: crashes on map change".
+std::vector<std::string> FormatForceEnableWarnings(std::span<const EngineFeatureKill> kills, std::span<const std::string> forceEnabled);
 
 // --- Text ---
 
@@ -273,8 +299,8 @@ EngineFeatureStatus EvaluateEngineFeature(const ResolutionReport& report, const 
 std::string DescribeFailure(const BindingResult& binding);
 
 // For natives called while their Engine Feature is disabled; same wording as the managed typed exception, e.g.
-// "Engine Feature cssharp.chat/say-hooks is disabled (Host_Say: not found)". A Binding absent from the report counts
-// as missing from Gamedata.
+// "Engine Feature cssharp.chat/say-hooks is disabled (Host_Say: not found)", or for a Kill Switch "... is disabled
+// (disabled by gamedata: <reason>)". A Binding absent from the report counts as missing from Gamedata.
 std::string DescribeUnavailable(const ResolutionReport& report, const EngineFeatureDeclaration& feature);
 
 // One compact line for the early native log, e.g.
@@ -304,7 +330,8 @@ std::vector<std::string> FormatVtableSizeWarnings(const ResolutionReport& report
 //                             "recordedVtableSize": <n>|null,
 //                             "window": [<fp>|null, <fp>, <fp>|null]|null }   <- Slot only } ],
 // A Heal's evidence: statedIndex is the old index, offset the new one, window the recorded window that matched there.
-//   "features": [ { "name", "bindings": [ "<key>", ... ] } ] }   <- the native-owned Engine Features
+//   "features": [ { "name", "bindings": [ "<key>", ... ] } ],   <- the native-owned Engine Features
+//   "killSwitches": [ { "id", "reason", "forced" } ] }           <- feature-level Kill Switches (names unchecked)
 // Enum values travel by name (the C++ enumerator names), so managed never depends on their numeric values.
 std::string ResolutionReportToJson(const ResolutionReport& report, std::span<const EngineFeatureDeclaration> nativeFeatures);
 

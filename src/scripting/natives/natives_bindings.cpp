@@ -29,14 +29,14 @@
 #include "scripting/script_engine.h"
 
 namespace counterstrikesharp {
-
 // The core Resolution Report and the native Engine Feature catalog, as JSON (see bindings::ResolutionReportToJson), plus
+// "gamedata": the provenance of the Gamedata the Bindings were resolved against (feed::ProvenanceToJson). Managed
 // "gamedata": the provenance line of the Gamedata the Bindings were resolved against (feed::FormatProvenance). Managed
 // reads it once at startup.
 static std::string GetResolutionReport(ScriptContext& script_context)
 {
     auto report = nlohmann::json::parse(bindings::ResolutionReportToJson(bindings::CoreResolutionReport(), bindings::NativeEngineFeatures()));
-    report["gamedata"] = feed::FormatProvenance(CoreGamedata().provenance);
+    report["gamedata"] = feed::ProvenanceToJson(CoreGamedata().provenance);
     return report.dump();
 }
 

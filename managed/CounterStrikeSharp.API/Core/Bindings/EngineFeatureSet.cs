@@ -116,7 +116,7 @@ internal sealed class EngineFeatureSet
 
         if (Report.Gamedata != null)
         {
-            text.Append("\n  ").Append(Report.Gamedata);
+            text.Append("\n  ").Append(Report.Gamedata.Line);
         }
 
         foreach (var binding in Report.Bindings.Where(b => b is { Healed: true, Slot: not null }))

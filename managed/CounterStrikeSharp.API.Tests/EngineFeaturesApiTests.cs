@@ -42,6 +42,28 @@ public class EngineFeaturesApiTests : IDisposable
     }
 
     [Fact]
+    public void PluginsReadWhereTheGamedataCameFrom()
+    {
+        EngineFeatures.Current = new EngineFeatureSet(ResolutionReport.FromJson("""
+            {"buildId":"1.42.0.2 (SourceRevision 11300000)","bindings":[],"features":[],
+             "gamedata":{"source":"CarriedForward","cached":true,"build":null,"carriedFrom":"1.42.0.1 (SourceRevision 11268945)",
+                         "seq":7,"keyId":"de4a068ed7d94def","warnings":["Gamedata Feed unreachable: http://feed.test/index.json: HTTP 404"],
+                         "line":"Gamedata: carried forward from build 1.42.0.1 (SourceRevision 11268945) in the Gamedata cache, seq 7, key de4a068ed7d94def; warnings: Gamedata Feed unreachable: http://feed.test/index.json: HTTP 404"}}
+            """), []);
+
+        var gamedata = EngineFeatures.Gamedata!;
+        Assert.Equal(GamedataSource.CarriedForward, gamedata.Source);
+        Assert.True(gamedata.Cached);
+        Assert.Null(gamedata.Build);
+        Assert.Equal("1.42.0.1 (SourceRevision 11268945)", gamedata.CarriedFrom);
+        Assert.Equal(7ul, gamedata.Seq);
+        Assert.Equal("de4a068ed7d94def", gamedata.KeyId);
+        Assert.Equal(["Gamedata Feed unreachable: http://feed.test/index.json: HTTP 404"], gamedata.Warnings);
+        Assert.StartsWith("Gamedata: carried forward from build 1.42.0.1 (SourceRevision 11268945) in the Gamedata cache",
+            gamedata.ToString());
+    }
+
+    [Fact]
     public void PluginsListEveryEngineFeatureWithItsStatus()
     {
         var status = Assert.Single(EngineFeatures.GetAll());

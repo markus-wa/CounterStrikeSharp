@@ -99,4 +99,10 @@ ChosenGamedata ChooseGamedata(const GamedataSourceInputs& inputs);
 // 7, key de4a068ed7d94def" or "Gamedata: bundled gamedata.json; warnings: index signature invalid".
 std::string FormatProvenance(const Provenance& provenance);
 
+// The provenance in the Resolution Report (managed reads it as EngineFeatures.Gamedata):
+//   { "source": "Bundled"|"ExactBuild"|"CarriedForward", "cached": bool,
+//     "build": "<label>" (ExactBuild) | null, "carriedFrom": "<label>" (CarriedForward) | null,
+//     "seq": <uint> | null, "keyId": "<hex>" | null, "warnings": ["..."], "line": FormatProvenance }
+nlohmann::json ProvenanceToJson(const Provenance& provenance);
+
 } // namespace counterstrikesharp::feed

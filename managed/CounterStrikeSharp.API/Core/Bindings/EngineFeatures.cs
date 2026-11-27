@@ -42,6 +42,12 @@ public static class EngineFeatures
     /// <summary>The CS2 build the Bindings were resolved against, e.g. <c>1.42.0.1/2000950</c>.</summary>
     public static string BuildId => Current.BuildId;
 
+    /// <summary>
+    /// Where the Gamedata the Bindings were resolved against came from: the source (bundled, exact build or carried
+    /// forward), its build, seq and signing key, and any feed warnings. Null only in reports built without it.
+    /// </summary>
+    public static GamedataProvenance? Gamedata => Current.Report.Gamedata;
+
     /// <summary>True if the named Engine Feature is declared, all of its Bindings resolved and no Kill Switch disables it.</summary>
     public static bool IsAvailable(string name) => Current.IsAvailable(name);
 

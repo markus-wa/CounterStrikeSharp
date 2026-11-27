@@ -686,3 +686,24 @@ TEST_CASE("Legacy updater leftovers: gamedata.etag is deleted, and AutoUpdate* c
           "Gamedata: bundled gamedata.json; warnings: core config AutoUpdateEnabled and AutoUpdateURL are deprecated and ignored: the "
           "Gamedata Feed replaced the legacy updater");
 }
+
+TEST_CASE("Provenance appears in the Resolution Report as structured fields with the startup report line")
+{
+    const GamedataDir dir;
+    const auto feed = FeedOf(3, { "100", "150" });
+    Boot(feed, dir, "100");
+
+    CHECK(feed::ProvenanceToJson(Boot(feed, dir, "150").provenance) == nlohmann::json::parse(R"j({
+        "source": "ExactBuild", "cached": false, "build": "1.0.150 (SourceRevision 150)", "carriedFrom": null, "seq": 3,
+        "keyId": "de4a068ed7d94def", "warnings": [],
+        "line": "Gamedata: exact build 1.0.150 (SourceRevision 150) from the Gamedata Feed, seq 3, key de4a068ed7d94def" })j"));
+    CHECK(feed::ProvenanceToJson(Boot(kFeedDown, dir, "200").provenance) == nlohmann::json::parse(R"j({
+        "source": "CarriedForward", "cached": true, "build": null, "carriedFrom": "1.0.150 (SourceRevision 150)", "seq": 3,
+        "keyId": "de4a068ed7d94def",
+        "warnings": ["Gamedata Feed unreachable: http://feed.test/gamedata/index.json: 404 Not Found",
+                     "the Gamedata Feed has no snapshot for build 1.0.200 (SourceRevision 200) on linux yet"],
+        "line": "Gamedata: carried forward from build 1.0.150 (SourceRevision 150) in the Gamedata cache, seq 3, key de4a068ed7d94def; warnings: Gamedata Feed unreachable: http://feed.test/gamedata/index.json: 404 Not Found; the Gamedata Feed has no snapshot for build 1.0.200 (SourceRevision 200) on linux yet" })j"));
+    CHECK(feed::ProvenanceToJson(feed::ChooseGamedata(Inputs(nullptr)).provenance) == nlohmann::json::parse(R"j({
+        "source": "Bundled", "cached": false, "build": null, "carriedFrom": null, "seq": null, "keyId": null, "warnings": [],
+        "line": "Gamedata: bundled gamedata.json" })j"));
+}

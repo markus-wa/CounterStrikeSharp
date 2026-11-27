@@ -232,7 +232,9 @@ public class EngineFeatureTests
     {
         const string json = """
             {"buildId":"1.42.0.1 (SourceRevision 11268945)","bindings":[],"features":[],
-             "gamedata":"Gamedata: exact build 1.42.0.1 (SourceRevision 11268945) from the Gamedata Feed, seq 7, key de4a068ed7d94def"}
+             "gamedata":{"source":"ExactBuild","cached":false,"build":"1.42.0.1 (SourceRevision 11268945)","carriedFrom":null,
+                         "seq":7,"keyId":"de4a068ed7d94def","warnings":[],
+                         "line":"Gamedata: exact build 1.42.0.1 (SourceRevision 11268945) from the Gamedata Feed, seq 7, key de4a068ed7d94def"}}
             """;
 
         var features = new EngineFeatureSet(ResolutionReport.FromJson(json), []);

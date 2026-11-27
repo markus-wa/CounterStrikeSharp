@@ -93,11 +93,8 @@ internal sealed class ResolutionReport
     /// <summary>Gamedata's feature-level Kill Switches, in Gamedata order.</summary>
     public IReadOnlyList<EngineFeatureKill> KillSwitches { get; }
 
-    /// <summary>
-    /// Where the Gamedata the Bindings were resolved against came from, as native's one-line provenance (e.g.
-    /// <c>Gamedata: exact build ... from the Gamedata Feed, seq 7, key ...</c>); null in reports built without it.
-    /// </summary>
-    public string? Gamedata { get; init; }
+    /// <summary>Where the Gamedata the Bindings were resolved against came from; null in reports built without it.</summary>
+    public GamedataProvenance? Gamedata { get; init; }
 
     /// <summary>null when native did not resolve the key (it is not in core Gamedata and no native feature declares it).</summary>
     public BindingResult? Find(string key) => _bindings.GetValueOrDefault(key);
@@ -129,7 +126,7 @@ internal sealed class ResolutionReport
     };
 
     private sealed record ReportDto(string BuildId, List<BindingDto> Bindings, List<FeatureDto> Features, bool? HealEnabled = null,
-        List<KillSwitchDto>? KillSwitches = null, string? Gamedata = null);
+        List<KillSwitchDto>? KillSwitches = null, GamedataProvenance? Gamedata = null);
 
     private sealed record KillSwitchDto(string Id, string Reason, bool Forced);
 

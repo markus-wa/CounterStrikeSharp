@@ -484,4 +484,24 @@ std::string FormatProvenance(const Provenance& provenance)
     return text;
 }
 
+nlohmann::json ProvenanceToJson(const Provenance& provenance)
+{
+    const auto labelIf = [&](GamedataSource source) {
+        return provenance.source == source ? nlohmann::json(provenance.build) : nlohmann::json();
+    };
+    const bool vouched = provenance.source != GamedataSource::Bundled;
+    return {
+        { "source", provenance.source == GamedataSource::ExactBuild       ? "ExactBuild"
+                    : provenance.source == GamedataSource::CarriedForward ? "CarriedForward"
+                                                                          : "Bundled" },
+        { "cached", provenance.cached },
+        { "build", labelIf(GamedataSource::ExactBuild) },
+        { "carriedFrom", labelIf(GamedataSource::CarriedForward) },
+        { "seq", vouched && provenance.seq ? nlohmann::json(*provenance.seq) : nlohmann::json() },
+        { "keyId", vouched ? nlohmann::json(provenance.keyId) : nlohmann::json() },
+        { "warnings", provenance.warnings },
+        { "line", FormatProvenance(provenance) },
+    };
+}
+
 } // namespace counterstrikesharp::feed

@@ -41,8 +41,59 @@ jobs:
       with:
         useConfigFile: true
 
+  # Gamedata is edited in the data repo only (eng/gamedata/bundle.py): fail when this repo's copies drift from it,
+  # generate each OS's bundled gamedata.json, and read the seq floor from the last published feed index.
+  gamedata:
+    runs-on: ubuntu-latest
+    outputs:
+      seq_floor: ${{ steps.seq_floor.outputs.seq_floor }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Checkout the Gamedata data repo
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ vars.GAMEDATA_REPO || 'markus-wa/cssharp-gamedata' }}
+          ref: ${{ vars.GAMEDATA_REF || 'main' }}
+          path: gamedata-repo
+          persist-credentials: false
+
+      - name: Test
+        run: python3 -m unittest discover -s eng/gamedata
+
+      - name: Committed copies match the data repo
+        run: python3 eng/gamedata/bundle.py check gamedata-repo
+
+      - name: Generate the bundled gamedata.json per OS
+        run: |
+          mkdir -p bundled/linux bundled/windows
+          python3 eng/gamedata/bundle.py gamedata gamedata-repo linux > bundled/linux/gamedata.json
+          python3 eng/gamedata/bundle.py gamedata gamedata-repo windows > bundled/windows/gamedata.json
+
+      # Fetched over HTTPS whatever scheme the variable names: a forged seq would ship in the release.
+      # shortcut: no feed is published before ticket 09, so with GAMEDATA_FEED_URL unset the floor is 0 (the core's
+      # default); 09 sets the variable.
+      - name: Seq floor from the published index
+        id: seq_floor
+        env:
+          GAMEDATA_FEED_URL: ${{ vars.GAMEDATA_FEED_URL }}
+        run: |
+          if [ -z "$GAMEDATA_FEED_URL" ]; then
+            echo "::warning::GAMEDATA_FEED_URL unset (no published feed): seq floor 0"
+            echo "seq_floor=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          curl --proto '=https' -fsS --max-time 30 -o index.json "https://${GAMEDATA_FEED_URL#*://}/index.json"
+          seq=$(python3 eng/gamedata/bundle.py seq-floor index.json)
+          echo "seq_floor=$seq" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundled-gamedata
+          path: bundled/
+
   build_windows:
-    needs: setup
+    needs: [setup, gamedata]
     runs-on: windows-latest
     steps:
       - name: Prepare env
@@ -72,11 +123,17 @@ jobs:
         run: |
           mkdir -p build
           cd build
-          cmake -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} ..
+          cmake -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCSSHARP_GAMEDATA_SEQ_FLOOR=${{ needs.gamedata.outputs.seq_floor }} ..
           cmake --build . --config ${{env.BUILD_TYPE}} -- /m:16
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundled-gamedata
+          path: bundled
 
       - name: Clean build directory
         run: |
+          cp bundled/windows/gamedata.json build/addons/counterstrikesharp/gamedata/gamedata.json
           mkdir -p build/addons/counterstrikesharp/bin/win64
           mv build/${{env.BUILD_TYPE}}/*.dll build/addons/counterstrikesharp/bin/win64
           mkdir build/output/
@@ -88,7 +145,7 @@ jobs:
           path: build/output/
 
   build_linux:
-    needs: setup
+    needs: [setup, gamedata]
     runs-on: ubuntu-latest
     # Could not figure out how to run in a container only on some matrix paths, so I've split it out into its own build.
     container:
@@ -108,7 +165,7 @@ jobs:
         run: |
           mkdir -p build
           cd build
-          cmake -G Ninja -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} ..
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCSSHARP_GAMEDATA_SEQ_FLOOR=${{ needs.gamedata.outputs.seq_floor }} ..
           cmake --build . --config ${{env.BUILD_TYPE}} -- -j16
 
       - name: Native tests
@@ -118,8 +175,14 @@ jobs:
           cd build-tests
           ctest --output-on-failure
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundled-gamedata
+          path: bundled
+
       - name: Clean build directory
         run: |
+          cp bundled/linux/gamedata.json build/addons/counterstrikesharp/gamedata/gamedata.json
           mkdir build/output/
           mv build/addons build/output
 

@@ -12,6 +12,7 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 add_subdirectory(libraries/spdlog)
 add_subdirectory(libraries/dyncall)
 add_subdirectory(libraries/zydis)
+add_subdirectory(libraries/monocypher)
 
 
 include("makefiles/protobuf.cmake")
@@ -36,8 +37,12 @@ set(SOURCE_FILES
     src/core/coreconfig.cpp
     src/core/gameconfig.h
     src/core/gameconfig.cpp
-    src/core/gameconfig_updater.h
-    src/core/gameconfig_updater.cpp
+    src/core/core_gamedata.h
+    src/core/core_gamedata.cpp
+    src/core/gamedata_feed.h
+    src/core/gamedata_feed.cpp
+    src/core/sha256.h
+    src/core/sha256.cpp
     src/core/http_client.h
     src/core/http_client.cpp
     src/core/log.h
@@ -163,7 +168,7 @@ elseif(WIN32)
 endif()
 
 # Libraries
-target_link_libraries(${PROJECT_NAME} ${COUNTER_STRIKE_SHARP_LINK_LIBRARIES} Protobufs zydis)
+target_link_libraries(${PROJECT_NAME} ${COUNTER_STRIKE_SHARP_LINK_LIBRARIES} Protobufs zydis monocypher)
 
 add_custom_command(
     TARGET ${PROJECT_NAME} PRE_BUILD

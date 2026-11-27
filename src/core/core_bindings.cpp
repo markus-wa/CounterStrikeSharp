@@ -83,6 +83,8 @@ SchemaFieldLookup FindServerSchemaField(std::string_view className, std::string_
     return { SchemaFieldStatus::Found, lookup.key.offset };
 }
 
+} // namespace
+
 BuildIdentity ReadBuildIdentity()
 {
     std::ifstream stream(utils::GameDirectory() + "/steam.inf");
@@ -90,8 +92,6 @@ BuildIdentity ReadBuildIdentity()
     if (stream) contents << stream.rdbuf();
     return ParseBuildIdentity(contents.str());
 }
-
-} // namespace
 
 void ResolveCoreBindings()
 {

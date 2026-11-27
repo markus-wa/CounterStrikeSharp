@@ -1,8 +1,5 @@
 #include "core/gameconfig.h"
 
-#include <fstream>
-#include <iterator>
-
 #include "core/signature.h"
 
 namespace counterstrikesharp {
@@ -10,18 +7,6 @@ namespace counterstrikesharp {
 CGameConfig::CGameConfig(const std::string& path) { m_sPath = path; }
 
 CGameConfig::~CGameConfig() = default;
-
-bool CGameConfig::Init(char* conf_error, int conf_error_size)
-{
-    std::ifstream ifs(m_sPath, std::ios::binary);
-    if (!ifs)
-    {
-        V_snprintf(conf_error, conf_error_size, "Gamedata file not found.");
-        return false;
-    }
-    const std::string bytes((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
-    return InitFromBytes(bytes, conf_error, conf_error_size);
-}
 
 bool CGameConfig::InitFromBytes(std::string_view bytes, char* conf_error, int conf_error_size)
 {

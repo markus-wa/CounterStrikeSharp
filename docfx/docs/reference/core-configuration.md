@@ -48,12 +48,19 @@ When enabled, will remove the `FCVAR_HIDDEN`,`FCVAR_DEVELOPMENTONLY`, `FCVAR_MIS
 
 When enabled, will remove the `FCVAR_HIDDEN`,`FCVAR_DEVELOPMENTONLY`, `FCVAR_MISSING0`, `FCVAR_MISSING1`, `FCVAR_MISSING2`, `FCVAR_MISSING3` flags from all console variables.
 
-## AutoUpdateEnabled
+## GamedataFeedEnabled
 
-When enabled, CS# will check for any updates to the gamedata.json file and automatically update it if a new version is available.
+When enabled (the default, on Linux and Windows), CS# fetches the Gamedata for exactly the CS2 build the server runs from the signed Gamedata Feed at boot. The feed's index must carry a valid Ed25519 signature and the snapshot must match the size and sha256 it lists, or CS# boots on the bundled `gamedata.json` and logs why. The bundled file is never modified. The startup report has a `Gamedata:` line that says which was used. Set to `false` to always boot on the bundled file without any network access.
 
-## AutoUpdateURL
-The URL to use for the auto-update feature. This URL should point to a JSON file that contains the latest version of the gamedata.json file.
+This replaces `AutoUpdateEnabled` and `AutoUpdateURL`, which are ignored.
+
+## GamedataFeedUrl
+
+The feed's base URL (`http://host[:port][/path]`). CS# reads `index.json`, `index.json.sig` and the snapshot files under it. Only plain `http://` is supported; integrity comes from the signature, not the transport. An `https://` or malformed URL logs a warning and CS# boots on the bundled file.
+
+## GamedataFeedPublicKeys
+
+Optional list of Ed25519 public keys (64 hex digits each) that may sign the feed's index, for operators who run their own feed. When set, it replaces the built-in keys.
 
 ## MaximumFrameTasksExecutedPerTick
 The maximum amount of `NextFrame` and `NextWorldUpdate` tasks that can be executed on a single game frame. The queue totals are tracked separately. Defaults to 1024. This value can be reduced to prevent long frame burstiness.

@@ -375,8 +375,8 @@ for r in "${removals[@]}"; do
 done
 
 css_cfg=$addons/counterstrikesharp/configs
-# Auto update would overwrite the gamedata under test.
-jq '.AutoUpdateEnabled = false' "$css_cfg/core.example.json" >"$css_cfg/core.json"
+# Boot on the gamedata under test (cases opt into a local feed with --core-jq).
+jq '.GamedataFeedEnabled = false' "$css_cfg/core.example.json" >"$css_cfg/core.json"
 for f in "${core_jq[@]}"; do
     jq "$f" "$css_cfg/core.json" >"$css_cfg/core.json.tmp" && mv "$css_cfg/core.json.tmp" "$css_cfg/core.json"
 done

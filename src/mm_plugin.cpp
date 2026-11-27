@@ -20,9 +20,9 @@
 #include "core/detours.h"
 #include "core/coreconfig.h"
 #include "core/core_bindings.h"
+#include "core/core_gamedata.h"
 #include "core/game_system.h"
 #include "core/gameconfig.h"
-#include "core/gameconfig_updater.h"
 #include "core/global_listener.h"
 #include "core/log.h"
 #include "core/slot_binding_keys.h"
@@ -144,22 +144,11 @@ bool CounterStrikeSharpMMPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, s
 
         CSSHARP_CORE_INFO("CoreConfig loaded.");
 
-        if (globals::coreConfig->AutoUpdateEnabled)
+        // The Gamedata Feed's snapshot for this build, or the bundled file (logs which, and why).
+        std::string gamedata_error;
+        if (!LoadCoreGamedata(gamedata_error))
         {
-#ifdef _WIN32
-            update::TryUpdateGameConfig(); // logs why it failed, if it does
-#else
-            CSSHARP_CORE_WARN("Auto-update is not currently supported on this platform.");
-#endif
-        }
-
-        auto gamedata_path = std::string(utils::GamedataDirectory() + "/gamedata.json");
-        globals::gameConfig = new CGameConfig(gamedata_path);
-        char conf_error[255] = "";
-
-        if (!globals::gameConfig->Init(conf_error, sizeof(conf_error)))
-        {
-            CSSHARP_CORE_ERROR("Could not read \'{}\'. Error: {}", gamedata_path, conf_error);
+            CSSHARP_CORE_ERROR("{}", gamedata_error);
             return false;
         }
 

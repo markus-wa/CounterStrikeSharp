@@ -18,7 +18,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "core/globals.h"
 
@@ -35,8 +37,13 @@ class CCoreConfig
     std::string ServerLanguage = "en";
     bool UnlockConCommands = true;
     bool UnlockConVars = true;
-    bool AutoUpdateEnabled = true;
-    std::string AutoUpdateURL = std::string("http://gamedata.cssharp.dev");
+    // The Gamedata Feed (ADR-0006, core/gamedata_feed.h): whether boot fetches a signed snapshot for this build, from
+    // where, and which public keys (64 hex digits each) replace the built-in ones when set.
+    bool GamedataFeedEnabled = true;
+    // shortcut: a placeholder that never resolves (RFC 2606 .invalid), so the default boots on bundled with a warning;
+    // ticket 09 sets the fork's feed URL.
+    std::string GamedataFeedUrl = std::string("http://gamedata-feed.invalid");
+    std::optional<std::vector<std::string>> GamedataFeedPublicKeys;
     // What happens when a core Engine Feature is disabled after boot resolution: "disable" (fail soft, ADR-0002) or
     // "crash" (stop the server after the startup report). Unknown values fall back to "disable" with a warning.
     std::string FailMode = std::string("disable");

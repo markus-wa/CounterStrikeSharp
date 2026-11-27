@@ -226,4 +226,19 @@ public class EngineFeatureTests
         var status = new EngineFeatureSet(report, []).GetStatus("cssharp.chat/say-hooks");
         Assert.Equal("Host_Say: ambiguous (2 matches)", status.Describe());
     }
+
+    [Fact]
+    public void TheStartupReportSaysWhereGamedataCameFrom()
+    {
+        const string json = """
+            {"buildId":"1.42.0.1 (SourceRevision 11268945)","bindings":[],"features":[],
+             "gamedata":"Gamedata: exact build 1.42.0.1 (SourceRevision 11268945) from the Gamedata Feed, seq 7, key de4a068ed7d94def"}
+            """;
+
+        var features = new EngineFeatureSet(ResolutionReport.FromJson(json), []);
+
+        Assert.Equal("Engine Features for build 1.42.0.1 (SourceRevision 11268945): all 0 available\n" +
+                     "  Gamedata: exact build 1.42.0.1 (SourceRevision 11268945) from the Gamedata Feed, seq 7, key de4a068ed7d94def",
+            features.FormatStartupReport());
+    }
 }

@@ -1,2 +1,3 @@
 GET_RESOLUTION_REPORT: -> string
+GET_CORE_GAMEDATA: -> string
 FAIL_MODE_STOP_SERVER: -> void

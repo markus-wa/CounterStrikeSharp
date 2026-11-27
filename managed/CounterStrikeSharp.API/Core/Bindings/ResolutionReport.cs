@@ -93,6 +93,12 @@ internal sealed class ResolutionReport
     /// <summary>Gamedata's feature-level Kill Switches, in Gamedata order.</summary>
     public IReadOnlyList<EngineFeatureKill> KillSwitches { get; }
 
+    /// <summary>
+    /// Where the Gamedata the Bindings were resolved against came from, as native's one-line provenance (e.g.
+    /// <c>Gamedata: exact build ... from the Gamedata Feed, seq 7, key ...</c>); null in reports built without it.
+    /// </summary>
+    public string? Gamedata { get; init; }
+
     /// <summary>null when native did not resolve the key (it is not in core Gamedata and no native feature declares it).</summary>
     public BindingResult? Find(string key) => _bindings.GetValueOrDefault(key);
 
@@ -113,7 +119,7 @@ internal sealed class ResolutionReport
                 b.Status == "Healed")),
             dto.Features.Select(f => new EngineFeatureDeclaration(f.Name, f.Bindings.Select(BindingDeclaration.Any).ToList())),
             dto.HealEnabled ?? true,
-            dto.KillSwitches?.Select(k => new EngineFeatureKill(k.Id, k.Reason, k.Forced)));
+            dto.KillSwitches?.Select(k => new EngineFeatureKill(k.Id, k.Reason, k.Forced))) { Gamedata = dto.Gamedata };
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -123,7 +129,7 @@ internal sealed class ResolutionReport
     };
 
     private sealed record ReportDto(string BuildId, List<BindingDto> Bindings, List<FeatureDto> Features, bool? HealEnabled = null,
-        List<KillSwitchDto>? KillSwitches = null);
+        List<KillSwitchDto>? KillSwitches = null, string? Gamedata = null);
 
     private sealed record KillSwitchDto(string Id, string Reason, bool Forced);
 

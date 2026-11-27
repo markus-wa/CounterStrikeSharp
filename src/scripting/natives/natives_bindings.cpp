@@ -18,7 +18,10 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include <nlohmann/json.hpp>
+
 #include "core/core_bindings.h"
+#include "core/core_gamedata.h"
 #include "core/coreconfig.h"
 #include "core/globals.h"
 #include "core/log.h"
@@ -27,12 +30,19 @@
 
 namespace counterstrikesharp {
 
-// The core Resolution Report and the native Engine Feature catalog, as JSON (see bindings::ResolutionReportToJson).
-// Managed reads it once at startup.
+// The core Resolution Report and the native Engine Feature catalog, as JSON (see bindings::ResolutionReportToJson), plus
+// "gamedata": the provenance line of the Gamedata the Bindings were resolved against (feed::FormatProvenance). Managed
+// reads it once at startup.
 static std::string GetResolutionReport(ScriptContext& script_context)
 {
-    return bindings::ResolutionReportToJson(bindings::CoreResolutionReport(), bindings::NativeEngineFeatures());
+    auto report = nlohmann::json::parse(bindings::ResolutionReportToJson(bindings::CoreResolutionReport(), bindings::NativeEngineFeatures()));
+    report["gamedata"] = feed::FormatProvenance(CoreGamedata().provenance);
+    return report.dump();
 }
+
+// The core Gamedata this boot resolved against (the feed's snapshot or the bundled file), so managed GameData lookups
+// read the same Gamedata as native instead of gamedata.json on disk.
+static std::string GetCoreGamedata(ScriptContext& script_context) { return CoreGamedata().bytes; }
 
 // The operator's FailMode: crash. Managed decides (it has the whole Engine Feature catalog), logs the startup report and
 // the fatal error naming the disabled Engine Features, then calls this. Natives are public, so native refuses too:
@@ -68,6 +78,7 @@ static void FailModeStopServer(ScriptContext& script_context)
 
 REGISTER_NATIVES(bindings, {
     ScriptEngine::RegisterNativeHandler("GET_RESOLUTION_REPORT", GetResolutionReport);
+    ScriptEngine::RegisterNativeHandler("GET_CORE_GAMEDATA", GetCoreGamedata);
     ScriptEngine::RegisterNativeHandler("FAIL_MODE_STOP_SERVER", FailModeStopServer);
 })
 } // namespace counterstrikesharp

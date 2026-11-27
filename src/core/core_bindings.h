@@ -12,6 +12,9 @@
 
 namespace counterstrikesharp::bindings {
 
+// The running build, from the game's steam.inf (fields "unknown" when it is missing).
+BuildIdentity ReadBuildIdentity();
+
 // Resolves every core Binding once. Call at boot after the modules are located and before anything registers hooks.
 // Logs one summary line naming each failed Binding and its reason.
 void ResolveCoreBindings();

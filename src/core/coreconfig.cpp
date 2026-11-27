@@ -62,8 +62,8 @@ bool CCoreConfig::Init(char* conf_error, int conf_error_size)
         ServerLanguage = m_json.value("ServerLanguage", ServerLanguage);
         UnlockConCommands = m_json.value("UnlockConCommands", UnlockConCommands);
         UnlockConVars = m_json.value("UnlockConVars", UnlockConVars);
-        AutoUpdateEnabled = m_json.value("AutoUpdateEnabled", AutoUpdateEnabled);
-        AutoUpdateURL = m_json.value("AutoUpdateURL", AutoUpdateURL);
+        GamedataFeedEnabled = m_json.value("GamedataFeedEnabled", GamedataFeedEnabled);
+        GamedataFeedUrl = m_json.value("GamedataFeedUrl", GamedataFeedUrl);
         ReadOperatorSettings();
     }
     catch (const std::exception& ex)
@@ -111,6 +111,17 @@ void CCoreConfig::ReadOperatorSettings()
         else
             CSSHARP_CORE_WARN("CoreConfig ForceEnableEngineFeatures {} is not a list of Engine Feature names, forcing none on",
                               force->dump());
+    }
+
+    GamedataFeedPublicKeys.reset();
+    if (const auto keys = m_json.find("GamedataFeedPublicKeys"); keys != m_json.end() && !keys->is_null())
+    {
+        const bool valid = keys->is_array() && std::all_of(keys->begin(), keys->end(), [](const json& key) {
+            return key.is_string();
+        });
+        if (valid) GamedataFeedPublicKeys = keys->get<std::vector<std::string>>();
+        else
+            CSSHARP_CORE_WARN("CoreConfig GamedataFeedPublicKeys {} is not a list of public keys, using the built-in keys", keys->dump());
     }
 }
 

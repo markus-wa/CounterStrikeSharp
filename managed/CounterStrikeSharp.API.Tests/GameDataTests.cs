@@ -45,14 +45,16 @@ public class GameDataTests : IDisposable
                                          "uniqueNearby": true, "size": 401 } } }
         """;
 
+    // json is the core Gamedata native booted on (the feed's snapshot or the bundled file).
     private void LoadGameData(string json)
     {
-        File.WriteAllText(Path.Combine(_gameDataDirectory, "gamedata.json"), json);
-
         var configuration = new Mock<IScriptHostConfiguration>();
         configuration.SetupGet(x => x.GameDataPath).Returns(_gameDataDirectory);
 
-        var provider = new GameDataProvider(configuration.Object, NullLogger<GameDataProvider>.Instance);
+        var provider = new GameDataProvider(configuration.Object, NullLogger<GameDataProvider>.Instance)
+        {
+            ReadCoreGamedata = () => json,
+        };
         provider.Load();
         GameData.GameDataProvider = provider;
     }
@@ -177,5 +179,35 @@ public class GameDataTests : IDisposable
         InstallReport();
 
         Assert.Equal(387, GameData.GetOffset("CBasePlayerPawn_CommitSuicide"));
+    }
+
+    [Fact]
+    public void CoreGamedataIsWhatNativeBootedOnNotGamedataJsonOnDisk()
+    {
+        // Native may boot on a Gamedata Feed snapshot; the bundled gamedata.json on disk is then not what it resolved.
+        File.WriteAllText(Path.Combine(_gameDataDirectory, "gamedata.json"), $$"""
+            { "Foo": { "offsets": { "{{CurrentOs}}": 1 } } }
+            """);
+
+        LoadGameData($$"""
+                       { "Foo": { "offsets": { "{{CurrentOs}}": 2 } } }
+                       """);
+
+        Assert.Equal(2, GameData.GetOffset("Foo"));
+    }
+
+    [Fact]
+    public void OtherGamedataFilesInTheDirectoryStillLoad()
+    {
+        File.WriteAllText(Path.Combine(_gameDataDirectory, "extra.json"), $$"""
+            { "Bar": { "offsets": { "{{CurrentOs}}": 5 } } }
+            """);
+
+        LoadGameData($$"""
+                       { "Foo": { "offsets": { "{{CurrentOs}}": 2 } } }
+                       """);
+
+        Assert.Equal(2, GameData.GetOffset("Foo"));
+        Assert.Equal(5, GameData.GetOffset("Bar"));
     }
 }

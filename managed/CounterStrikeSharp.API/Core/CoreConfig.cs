@@ -63,11 +63,6 @@ namespace CounterStrikeSharp.API.Core
 
         [JsonPropertyName("UnlockConVars")] public bool UnlockConVars { get; set; } = true;
 
-        [JsonPropertyName("AutoUpdateEnabled")]
-        public bool AutoUpdateEnabled { get; set; } = true;
-
-        [JsonPropertyName("AutoUpdateURL")] public string AutoUpdateURL { get; set; } = "http://gamedata.cssharp.dev";
-
         [JsonPropertyName("MaximumFrameTasksExecutedPerTick")]
         public int MaximumFrameTasksExecutedPerTick { get; set; } = 1024;
 

@@ -20,9 +20,7 @@ class CGameConfig
     CGameConfig(const std::string& path);
     ~CGameConfig();
 
-    // Reads the Gamedata file at the constructor's path.
-    bool Init(char* conf_error, int conf_error_size);
-    // From a Gamedata file's bytes already in memory; the constructor's path then only names it.
+    // From a Gamedata file's bytes (core/core_gamedata.h chooses them); the constructor's path only names it.
     bool InitFromBytes(std::string_view bytes, char* conf_error, int conf_error_size);
     const std::string GetPath();
     // Gamedata as the Binding resolver reads it, for this OS. Core code never looks keys up itself: it asks the

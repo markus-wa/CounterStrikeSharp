@@ -91,7 +91,8 @@ internal sealed class EngineFeatureSet
 
     /// <summary>
     /// The startup report: one block with the build id, how many Engine Features are available, and each disabled one
-    /// with its failed Binding and reason. Same wording as native ("Engine Feature X disabled (Key: reason)"). Then every
+    /// with its failed Binding and reason. Same wording as native ("Engine Feature X disabled (Key: reason)"). Then where
+    /// Gamedata came from (feed snapshot or bundled, with any feed warnings), every
     /// Heal with its evidence and the vtables whose size changed since Gamedata was generated (same wording as the
     /// native log), Slot Bindings used without a Vtable Check, whether the operator turned Heal off, and the Kill Switches
     /// in Gamedata (blank Bindings, then disabled Engine Features with their reasons, marked when forced on or unknown).
@@ -111,6 +112,11 @@ internal sealed class EngineFeatureSet
             {
                 text.Append("\n  ").Append(status);
             }
+        }
+
+        if (Report.Gamedata != null)
+        {
+            text.Append("\n  ").Append(Report.Gamedata);
         }
 
         foreach (var binding in Report.Bindings.Where(b => b is { Healed: true, Slot: not null }))

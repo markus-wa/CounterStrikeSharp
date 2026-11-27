@@ -60,15 +60,26 @@ public sealed class GameDataProvider : IStartupService
         _gameDataDirectoryPath = scriptHostConfiguration.GameDataPath;
     }
     
+    /// <summary>
+    /// The core Gamedata native resolved its Bindings against: the Gamedata Feed's snapshot or the bundled
+    /// <c>gamedata.json</c> (so managed lookups never read a different file than native). Tests replace it.
+    /// </summary>
+    internal Func<string> ReadCoreGamedata { get; init; } = NativeAPI.GetCoreGamedata;
+
+    private const string CoreGamedataFile = "gamedata.json";
+
     public void Load()
     {
         try
         {
             Methods = new Dictionary<string, LoadedGameData>();
 
-            foreach (string filePath in Directory.EnumerateFiles(_gameDataDirectoryPath, "*.json"))
+            var documents = new List<(string Path, string Json)> { ("core Gamedata", ReadCoreGamedata()) };
+            documents.AddRange(Directory.EnumerateFiles(_gameDataDirectoryPath, "*.json")
+                .Where(path => !Path.GetFileName(path).Equals(CoreGamedataFile, StringComparison.OrdinalIgnoreCase))
+                .Select(path => (path, File.ReadAllText(path))));
+            foreach (var (filePath, jsonContent) in documents)
             {
-                string jsonContent = File.ReadAllText(filePath);
                 // A top-level value that is not an object is not a Binding (e.g. the Kill Switch list "disabledEngineFeatures").
                 Dictionary<string, LoadedGameData> loadedMethods = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(jsonContent)!
                     .Where(entry => entry.Value.ValueKind == JsonValueKind.Object)

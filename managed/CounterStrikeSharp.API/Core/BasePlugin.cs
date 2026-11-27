@@ -316,7 +316,7 @@ namespace CounterStrikeSharp.API.Core
                 {
                     args[i] = context.GetArgument(castedParameterTypes[i] ?? parameterTypes[i], i);
                     if (castedParameterTypes[i] != null)
-                        args[i] = CastListenerArgument(parameterTypes[i], args[i]);
+                        args[i] = Activator.CreateInstance(parameterTypes[i], new[] { args[i] });
                 }
 
                 var result = handler.DynamicInvoke(args);
@@ -334,12 +334,6 @@ namespace CounterStrikeSharp.API.Core
             NativeAPI.AddListener(listenerName, subscriber.GetInputArgument());
             Listeners[handler] = subscriber;
         }
-
-        // A [CastFrom] listener parameter from the value native pushed: through the parameter type's (possibly internal)
-        // constructor taking that value.
-        internal static object CastListenerArgument(Type parameterType, object pushed) =>
-            Activator.CreateInstance(parameterType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
-                [pushed], null)!;
 
         /// <summary>
         /// Removes a global listener.

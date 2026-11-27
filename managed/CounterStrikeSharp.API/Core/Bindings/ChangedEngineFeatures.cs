@@ -11,8 +11,11 @@ namespace CounterStrikeSharp.API.Core;
 /// </summary>
 public sealed class ChangedEngineFeatures : ReadOnlyCollection<string>
 {
-    // From native's payload: {"keys": [Gamedata keys], "killSwitches": [Engine Feature ids]}.
-    internal ChangedEngineFeatures(string changes) : base(Parse(changes))
+    /// <summary>
+    /// From the changes native raises <see cref="Listeners.OnGamedataUpdateAvailable"/> with:
+    /// <c>{"keys": [Gamedata keys], "killSwitches": [Engine Feature ids]}</c>, mapped to the running Engine Features.
+    /// </summary>
+    public ChangedEngineFeatures(string changes) : base(Parse(changes))
     {
     }
 

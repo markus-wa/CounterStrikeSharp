@@ -24,13 +24,13 @@ public class RestartNoticeTests : IDisposable
     {
         var parameters = typeof(T).GetMethod("Invoke")!.GetParameters();
         return parameters.Select((p, i) => p.GetCustomAttribute<CastFromAttribute>() is { } castFrom
-                ? BasePlugin.CastListenerArgument(p.ParameterType, Convert.ChangeType(pushed[i], castFrom.Type))
+                ? Activator.CreateInstance(p.ParameterType, Convert.ChangeType(pushed[i], castFrom.Type))
                 : pushed[i])
             .ToArray();
     }
 
     [Fact]
-    public void TheEventIsDispatchedWithTheBuildSeqAndTheEngineFeaturesTheUpdateChanges()
+    public void TheEventIsDispatchedWithTheBuildSeqAndTheEngineFeaturesTheStagedSnapshotChanges()
     {
         string? build = null;
         ulong seq = 0;
@@ -47,7 +47,7 @@ public class RestartNoticeTests : IDisposable
     }
 
     [Fact]
-    public void AnUpdateThatTouchesNoEngineFeatureHasAnEmptyList()
+    public void AStagedSnapshotThatTouchesNoEngineFeatureHasAnEmptyList()
     {
         var args = Dispatch<Listeners.OnGamedataUpdateAvailable>("b", 1ul, """{"keys":["NotInAnyEngineFeature"],"killSwitches":[]}""");
 

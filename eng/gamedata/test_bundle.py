@@ -58,8 +58,8 @@ class Drift(unittest.TestCase):
         self.data, self.fork = temp / "data", temp / "fork"
         write(self.data / "snapshots/5/linux.json", '{"A": {"offsets": {"linux": 1}}}')
         write(self.data / "snapshots/7/windows.json", '{"A": {"offsets": {"windows": 2}}}')
-        write(self.data / "publisher/fixtures/index.json", '{"seq": 1}\n')
-        write(self.data / "publisher/fixtures/snapshots/5/linux.json", "{}")
+        write(self.data / "publisher/fixtures/feed/index.json", '{"seq": 1}\n')
+        write(self.data / "publisher/fixtures/feed/snapshots/5/linux.json", "{}")
         write(self.fork / self.BUNDLED, '{\n  "sourceRevision": "5",\n  "A": {\n    "offsets": {\n      "linux": 1\n    }\n  }\n}\n')
         write(self.fork / self.FIXTURES / "index.json", '{"seq": 1}\n')
         write(self.fork / self.FIXTURES / "snapshots/5/linux.json", "{}")
@@ -76,7 +76,7 @@ class Drift(unittest.TestCase):
     def test_a_fixture_copy_that_differs_drifts_per_file(self):
         write(self.fork / self.FIXTURES / "index.json", '{"seq": 2}\n')
         write(self.fork / self.FIXTURES / "extra.json", "{}")
-        (self.data / "publisher/fixtures/snapshots/5/linux.json").rename(self.data / "publisher/fixtures/moved.json")
+        (self.data / "publisher/fixtures/feed/snapshots/5/linux.json").rename(self.data / "publisher/fixtures/feed/moved.json")
         problems = "\n".join(bundle.drift(self.data, self.fork))
         for name in ("index.json", "extra.json", "moved.json", "snapshots/5/linux.json"):
             self.assertIn(f"{self.FIXTURES}/{name}", problems)

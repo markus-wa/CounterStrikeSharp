@@ -22,6 +22,7 @@ OSES = ("linux", "windows")
 FORK = pathlib.Path(__file__).resolve().parents[2]
 BUNDLED = "configs/addons/counterstrikesharp/gamedata/gamedata.json"
 FIXTURES = "tests/native/fixtures/gamedata-feed"
+DATA_REPO_FIXTURES = "publisher/fixtures/feed"
 
 
 def newest_snapshot(data_repo, os_name):
@@ -62,13 +63,13 @@ def drift(data_repo, fork):
             f"{BUNDLED} is not snapshots/{newest_snapshot(data_repo, 'linux')}/linux.json plus its stamp; regenerate: "
             f"python3 eng/gamedata/bundle.py gamedata {data_repo} linux > {BUNDLED}"
         )
-    ours, theirs = files(pathlib.Path(fork, FIXTURES)), files(pathlib.Path(data_repo, "publisher/fixtures"))
+    ours, theirs = files(pathlib.Path(fork, FIXTURES)), files(pathlib.Path(data_repo, DATA_REPO_FIXTURES))
     for name in sorted(ours.keys() | theirs.keys()):
         if ours.get(name) != theirs.get(name):
             state = "missing" if name not in ours else "not in the data repo" if name not in theirs else "differs"
             problems.append(
-                f"{FIXTURES}/{name} {state} (data repo publisher/fixtures); replace the copy: "
-                f"rm -r {FIXTURES} && cp -r {data_repo}/publisher/fixtures {FIXTURES}"
+                f"{FIXTURES}/{name} {state} (data repo {DATA_REPO_FIXTURES}); replace the copy: "
+                f"rm -r {FIXTURES} && cp -r {data_repo}/{DATA_REPO_FIXTURES} {FIXTURES}"
             )
     return problems
 

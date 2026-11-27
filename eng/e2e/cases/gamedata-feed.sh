@@ -47,7 +47,7 @@ jq -n --arg patch "$patch" '{patchVersion: $patch}' >"$snapshots/build.json"
 jq 'del(.sourceRevision) + {"E2EFeedMarker": {"offsets": {"linux": 1, "windows": 1}}}' \
     "$repo/configs/addons/counterstrikesharp/gamedata/gamedata.json" >"$snapshots/linux.json" || exit 1
 entries=$(jq '[.[] | objects] | length' "$snapshots/linux.json")
-python3 -I "$gamedata_repo/publisher/publish.py" publish --key "$gamedata_repo/publisher/test-key.pem" \
+python3 "$gamedata_repo/publisher/publish.py" publish --key "$gamedata_repo/publisher/test-key.pem" \
     --out "$work/feed" "$work/data" || exit 1 # first publish: seq 1
 cp -r "$work/feed" "$work/tampered"
 
@@ -57,10 +57,10 @@ mkdir -p "$work/data-previous/snapshots/$previous" "$work/carried-cache"
 echo '{"patchVersion": "0.0.0.1"}' >"$work/data-previous/snapshots/$previous/build.json"
 jq 'del(.sourceRevision) | .disabledEngineFeatures = [{"id": "cssharp.server/game-system-events", "reason": "e2e kill"}]' \
     "$repo/configs/addons/counterstrikesharp/gamedata/gamedata.json" >"$work/data-previous/snapshots/$previous/linux.json" || exit 1
-python3 -I "$gamedata_repo/publisher/publish.py" publish --key "$gamedata_repo/publisher/test-key.pem" \
+python3 "$gamedata_repo/publisher/publish.py" publish --key "$gamedata_repo/publisher/test-key.pem" \
     --out "$work/carried" "$work/data-previous" || exit 1
 cat "$work/carried/index.json.sig" "$work/carried/index.json" >"$work/carried-cache/index.signed"
-cp "$work/carried/snapshots/$previous/linux.json" "$work/carried-cache/$previous.linux.json"
+cp "$work/carried/$(jq -r ".builds[\"$previous\"].linux.file" "$work/carried/index.json")" "$work/carried-cache/$previous.linux.json"
 python3 -I -c 'import sys; p = sys.argv[1]; b = bytearray(open(p, "rb").read()); b[len(b) // 2] ^= 1; open(p, "wb").write(b)' \
     "$work/tampered/index.json"
 

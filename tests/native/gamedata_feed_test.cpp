@@ -422,25 +422,33 @@ std::string ReadFixture(const std::string& relative)
 
 } // namespace
 
-// Cross-implementation: tests/native/fixtures/gamedata-feed is a copy of the data repo's publisher/fixtures, written by its
-// publisher with the test key; the publisher's tests check it still produces exactly these bytes (regenerate: data repo
-// README, "Cross-implementation fixtures"). `eng/gamedata/bundle.py check` fails CI when this copy differs from it.
+// Cross-implementation: tests/native/fixtures/gamedata-feed is a copy of the data repo's publisher/fixtures/feed, written
+// by its publisher with the test key; the publisher's tests check it still produces exactly these bytes (regenerate: data
+// repo README, "Cross-implementation fixtures"). `eng/gamedata/bundle.py check` fails CI when this copy differs from it.
 TEST_CASE("A feed signed by the Python publisher verifies natively, and a mutated one does not")
 {
     const auto index = ReadFixture("index.json");
     const auto signature = ReadFixture("index.json.sig");
-    const auto snapshot = ReadFixture("snapshots/11268945/linux.json");
+    const auto file = nlohmann::json::parse(index)["builds"]["11268945"]["linux"]["file"].get<std::string>();
+    const auto snapshot = ReadFixture(file);
+    const auto Published = [&](const std::string& index, const std::string& signature, const std::string& snapshot) {
+        FakeTransport transport;
+        transport.files[kFeedUrl + "/index.json"] = index;
+        transport.files[kFeedUrl + "/index.json.sig"] = signature;
+        transport.files[kFeedUrl + "/" + file] = snapshot;
+        return transport;
+    };
 
-    const auto published = Feed(index, signature, snapshot);
+    const auto published = Published(index, signature, snapshot);
     const auto chosen = feed::ChooseGamedata(Inputs(&published));
     CHECK(chosen.bytes == snapshot);
     CHECK(feed::FormatProvenance(chosen.provenance) ==
           "Gamedata: exact build 1.42.0.1 (SourceRevision 11268945) from the Gamedata Feed, seq 1, key de4a068ed7d94def");
 
     const std::pair<const char*, FakeTransport> mutations[] = {
-        { "index", Feed(Flip(index, index.size() / 2), signature, snapshot) },
-        { "signature", Feed(index, Flip(signature, 40), snapshot) },
-        { "snapshot", Feed(index, signature, Flip(snapshot, 5)) },
+        { "index", Published(Flip(index, index.size() / 2), signature, snapshot) },
+        { "signature", Published(index, Flip(signature, 40), snapshot) },
+        { "snapshot", Published(index, signature, Flip(snapshot, 5)) },
     };
     for (const auto& [name, mutated] : mutations)
     {

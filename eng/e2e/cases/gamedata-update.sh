@@ -40,7 +40,7 @@ mkdir -p "$(dirname "$snapshot")"
 jq -n --arg patch "$patch" '{patchVersion: $patch}' >"$(dirname "$snapshot")/build.json"
 jq 'del(.sourceRevision) + {"E2EFeedMarker": {"offsets": {"linux": 1, "windows": 1}}}' \
     "$repo/configs/addons/counterstrikesharp/gamedata/gamedata.json" >"$snapshot" || exit 1
-publish() { python3 -I "$gamedata_repo/publisher/publish.py" publish --key "$gamedata_repo/publisher/test-key.pem" "$@" "$work/data"; }
+publish() { python3 "$gamedata_repo/publisher/publish.py" publish --key "$gamedata_repo/publisher/test-key.pem" "$@" "$work/data"; }
 publish --out "$work/v1" || exit 1
 jq '.E2EFeedMarker.offsets.linux = 2 | .disabledEngineFeatures = [{"id": "cssharp.player/respawn", "reason": "e2e update"}]' \
     "$snapshot" >"$snapshot.new" && mv "$snapshot.new" "$snapshot" || exit 1

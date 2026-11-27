@@ -2,13 +2,13 @@
   "builds": {
     "11268945": {
       "linux": {
-        "file": "snapshots/11268945/linux.json",
+        "file": "snapshots/11268945/linux.fd8e87bebe3b377a.json",
         "sha256": "fd8e87bebe3b377a2015a87d4dcf3894a614119cff518a78da033066e2becc14",
         "size": 65
       },
       "patchVersion": "1.42.0.1",
       "windows": {
-        "file": "snapshots/11268945/windows.json",
+        "file": "snapshots/11268945/windows.fd8e87bebe3b377a.json",
         "sha256": "fd8e87bebe3b377a2015a87d4dcf3894a614119cff518a78da033066e2becc14",
         "size": 65
       }

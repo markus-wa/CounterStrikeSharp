@@ -50,7 +50,8 @@ struct Limits
 
 // The real transport, on cpp-httplib through MakeClient. One instance is one fetch: its Limits start at construction
 // and span all its Gets, so make a new one per boot fetch or poll. Beyond them: 3 s to connect, response headers
-// capped at 8 KiB, Accept-Encoding identity (a compressed body is refused), redirects refused. Not for concurrent Gets.
+// capped at 8 KiB in total (checked once cpp-httplib has read them, see http_client.cpp), Accept-Encoding identity (a
+// compressed body is refused), redirects refused. Not for concurrent Gets.
 // Each Get runs on its own thread so the deadline also bounds blocking DNS (getaddrinfo has no timeout and the
 // non-blocking variant needs libanl); on the deadline the caller returns and the thread is left to finish alone.
 // shortcut: a detached thread stuck in getaddrinfo outlives the deadline (until the resolver gives up); if the plugin

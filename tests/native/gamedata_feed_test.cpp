@@ -85,7 +85,9 @@ struct FakeTransport final : http::Transport
         const auto file = files.find(request.url);
         if (file == files.end()) return { std::nullopt, "404 Not Found" };
         if (file->second.size() > request.maxBytes) return { std::nullopt, "over the cap" };
-        return { file->second, "" };
+        // The ETag is the body itself: unchanged exactly when the body is.
+        if (request.ifNoneMatch == file->second) return { std::nullopt, "", file->second, true };
+        return { file->second, "", file->second };
     }
 };
 
@@ -706,4 +708,109 @@ TEST_CASE("Provenance appears in the Resolution Report as structured fields with
     CHECK(feed::ProvenanceToJson(feed::ChooseGamedata(Inputs(nullptr)).provenance) == nlohmann::json::parse(R"j({
         "source": "Bundled", "cached": false, "build": null, "carriedFrom": null, "seq": null, "keyId": null, "warnings": [],
         "line": "Gamedata: bundled gamedata.json" })j"));
+}
+
+// While the server runs: polls share the Gamedata directory with the boot before them.
+namespace {
+
+const std::string kChangedSnapshot = R"({ "Build100": { "offsets": { "linux": 2 } }, "Added": { "offsets": { "linux": 5 } },
+    "disabledEngineFeatures": [ { "id": "cssharp.chat/say-hooks", "reason": "crashes on this build" } ] })";
+
+feed::PollResult Poll(const http::Transport& transport, const GamedataDir& dir, const std::string& running, const std::string& etag = "")
+{
+    auto inputs = Inputs(&transport, dir);
+    inputs.build = { "1.0.100", "100" };
+    return feed::PollGamedataFeed(inputs, running, etag);
+}
+
+} // namespace
+
+TEST_CASE("Poll: a newer seq with a changed snapshot for this build is staged and reported once, and the next boot uses it")
+{
+    const GamedataDir dir;
+    const auto running = Boot(FeedOf(1, { "100", "200" }), dir, "100").bytes;
+
+    const auto newer = FeedOf(2, { "100", "200" }, { { "100", kChangedSnapshot } });
+    const auto poll = Poll(newer, dir, running);
+    REQUIRE(poll.update);
+    CHECK(poll.update->build == "1.0.100 (SourceRevision 100)");
+    CHECK(poll.update->seq == 2);
+    CHECK(poll.update->changes.keys == std::vector<std::string>{ "Added", "Build100" });
+    CHECK(poll.update->changes.killSwitches == std::vector<std::string>{ "cssharp.chat/say-hooks" });
+    CHECK(poll.warnings.empty());
+
+    CHECK_FALSE(Poll(newer, dir, running).update); // staged already: no second notice
+
+    const auto next = Boot(kFeedDown, dir, "100");
+    CHECK(next.bytes == kChangedSnapshot);
+    CHECK(next.provenance.seq == 2);
+}
+
+TEST_CASE("Poll: the same seq, a newer seq with this build's snapshot unchanged, or a 304 stage nothing")
+{
+    const GamedataDir dir;
+    const auto current = FeedOf(1, { "100" });
+    const auto running = Boot(current, dir, "100").bytes;
+
+    SUBCASE("same seq")
+    {
+        const auto poll = Poll(current, dir, running);
+        CHECK_FALSE(poll.update);
+        CHECK(poll.warnings.empty());
+    }
+    SUBCASE("newer seq, only another build changed")
+    {
+        CHECK_FALSE(Poll(FeedOf(2, { "100", "200" }), dir, running).update);
+    }
+    SUBCASE("304: not even the signature or a snapshot is fetched")
+    {
+        const auto newer = FeedOf(2, { "100" }, { { "100", kChangedSnapshot } });
+        const auto etag = newer.files.at(kFeedUrl + "/index.json");
+        const auto poll = Poll(newer, dir, running, etag);
+        CHECK_FALSE(poll.update);
+        CHECK(poll.etag == etag);
+        CHECK(newer.requested == std::vector<std::string>{ kFeedUrl + "/index.json" });
+    }
+}
+
+TEST_CASE("Poll: a failed verification or a rollback stages nothing and warns")
+{
+    const GamedataDir dir;
+    const auto running = Boot(FeedOf(3, { "100" }), dir, "100").bytes;
+
+    SUBCASE("snapshot does not match the signed index")
+    {
+        auto tampered = FeedOf(4, { "100" }, { { "100", kChangedSnapshot } });
+        auto& snapshot = tampered.files.at(kFeedUrl + "/snapshots/100/linux.json");
+        snapshot = Flip(snapshot, 3);
+        const auto poll = Poll(tampered, dir, running);
+        CHECK_FALSE(poll.update);
+        CHECK(poll.etag.empty()); // retried in full next time
+        CHECK(poll.warnings == std::vector<std::string>{ "snapshot snapshots/100/linux.json does not match the signed index (size " +
+                                                          std::to_string(kChangedSnapshot.size()) + ", index says " +
+                                                          std::to_string(kChangedSnapshot.size()) + ", or sha256 differs)" });
+    }
+    SUBCASE("index signature invalid")
+    {
+        auto tampered = FeedOf(4, { "100" }, { { "100", kChangedSnapshot } });
+        auto& signature = tampered.files.at(kFeedUrl + "/index.json.sig");
+        signature = Flip(signature, 40);
+        const auto poll = Poll(tampered, dir, running);
+        CHECK_FALSE(poll.update);
+        CHECK(poll.warnings == std::vector<std::string>{ "index signature invalid (key de4a068ed7d94def)" });
+    }
+    SUBCASE("rollback")
+    {
+        const auto poll = Poll(FeedOf(2, { "100" }, { { "100", kChangedSnapshot } }), dir, running);
+        CHECK_FALSE(poll.update);
+        CHECK(poll.warnings ==
+              std::vector<std::string>{ "Gamedata Feed index seq 2 is below the highest accepted seq 3, rejected as a rollback" });
+    }
+    SUBCASE("unreachable")
+    {
+        const auto poll = Poll(kFeedDown, dir, running);
+        CHECK_FALSE(poll.update);
+        CHECK(poll.warnings == std::vector<std::string>{ "Gamedata Feed unreachable: http://feed.test/gamedata/index.json: 404 Not Found" });
+    }
+    CHECK(Boot(kFeedDown, dir, "100").bytes == running);
 }

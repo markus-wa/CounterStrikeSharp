@@ -8,6 +8,7 @@
 #include <functional>
 #include <iterator>
 #include <map>
+#include <set>
 #include <stdexcept>
 
 #include <fcntl.h>
@@ -264,8 +265,9 @@ int Close(int fd) { return ::close(fd); }
 
 // Replaces path by bytes atomically: a temp file next to it, flushed to disk, renamed over it (std::filesystem::rename
 // replaces an existing file on both OSes). A crash or failure leaves the old file or the new one, never a partial one;
-// a temp file left by a crash is removed by the next boot's PruneCache. A failure is a warning: the boot goes on.
-void WriteCacheFile(const fs::path& path, std::string_view bytes, std::vector<std::string>& warnings)
+// a temp file left by a crash is removed by the next boot's PruneCache. A failure is a warning (and false): the boot
+// goes on.
+bool WriteCacheFile(const fs::path& path, std::string_view bytes, std::vector<std::string>& warnings)
 {
     std::error_code ec;
     fs::create_directories(path.parent_path(), ec);
@@ -285,11 +287,12 @@ void WriteCacheFile(const fs::path& path, std::string_view bytes, std::vector<st
     if (error.empty())
     {
         fs::rename(temp, path, ec);
-        if (!ec) return;
+        if (!ec) return true;
         error = ec.message();
     }
     fs::remove(temp, ec);
     warnings.push_back("could not write the Gamedata cache file " + path.string() + ": " + error);
+    return false;
 }
 
 // Keeps the snapshots of the newest kCachedBuilds builds; removes older ones and temp files left by interrupted writes.
@@ -315,6 +318,89 @@ void PruneCache(const fs::path& cache)
                 fs::remove(snapshot, ec);
 }
 
+std::string FeedBase(std::string url)
+{
+    while (!url.empty() && url.back() == '/')
+        url.pop_back();
+    return url;
+}
+
+// The cached index, re-verified; none when there is none or it does not verify (with a warning).
+std::optional<Index> StoredIndex(const fs::path& cache, const std::vector<PublicKey>& keys, std::vector<std::string>& warnings)
+{
+    const auto file = ReadFile(cache.empty() ? fs::path() : cache / kCachedIndex);
+    if (!file) return std::nullopt;
+    const auto split = std::min(file->size(), kKeyIdSize + kSignatureSize);
+    std::string error;
+    auto stored = AcceptIndex(file->substr(split), file->substr(0, split), keys, error);
+    if (!stored) warnings.push_back("cached " + error + ", ignored");
+    return stored;
+}
+
+struct FetchedIndex
+{
+    std::optional<Index> index; // verified, and not below the floor
+    std::string etag; // for the next fetch: the response's, or still the one asked with on a 304; empty when this one failed
+};
+
+// The feed's index and signature, verified, with rollback protection: never below floor (the highest seq accepted so far
+// or the release's floor). With etag set, asks for the index only if it changed (a 304: no index). A failure is a warning.
+FetchedIndex FetchIndex(const http::Transport& transport, const std::string& base, const std::vector<PublicKey>& keys,
+                        std::uint64_t floor, const std::string& etag, std::vector<std::string>& warnings)
+{
+    FetchedIndex fetched;
+    auto response = transport.Get({ base + "/index.json", kIndexCap, etag });
+    if (response.notModified)
+    {
+        fetched.etag = etag;
+        return fetched;
+    }
+    std::string error = response.body ? "" : "Gamedata Feed unreachable: " + base + "/index.json: " + response.error;
+    auto signature = error.empty() ? Fetch(transport, base + "/index.json.sig", kSignatureCap, error) : "";
+    if (error.empty()) fetched.index = AcceptIndex(std::move(*response.body), std::move(signature), keys, error);
+    if (fetched.index && fetched.index->seq < floor)
+    {
+        error = "Gamedata Feed index seq " + std::to_string(fetched.index->seq) + " is below the highest accepted seq " +
+                std::to_string(floor) + ", rejected as a rollback";
+        fetched.index.reset();
+    }
+    if (error.empty()) fetched.etag = response.etag;
+    else
+        warnings.push_back(error);
+    return fetched;
+}
+
+// Makes the fetched index the cached one (the seq state) unless it already is.
+void CacheIndex(const fs::path& cache, const std::optional<Index>& stored, const Index& fetched, std::vector<std::string>& warnings)
+{
+    if (!cache.empty() && (!stored || stored->signature != fetched.signature || stored->bytes != fetched.bytes))
+        WriteCacheFile(cache / kCachedIndex, fetched.signature + fetched.bytes, warnings);
+}
+
+// The ids or keys of two id-to-value maps whose value differs or that only one of them has, sorted.
+template <typename Map> std::vector<std::string> Differing(const Map& before, const Map& after)
+{
+    std::set<std::string> differing;
+    for (const auto& [key, value] : before)
+        if (const auto other = after.find(key); other == after.end() || !(other->second == value)) differing.insert(key);
+    for (const auto& [key, value] : after)
+        if (!before.contains(key)) differing.insert(key);
+    return { differing.begin(), differing.end() };
+}
+
+GamedataChanges DiffGamedata(std::string_view running, std::string_view staged, const std::string& os)
+{
+    const auto before = nlohmann::json::parse(running);
+    const auto after = nlohmann::json::parse(staged);
+    const auto kills = [](const nlohmann::json& root) {
+        std::map<std::string, std::string> reasons;
+        for (const auto& kill : bindings::ParseKillSwitches(root))
+            reasons[kill.id] = kill.reason;
+        return reasons;
+    };
+    return { Differing(bindings::ParseGamedata(before, os), bindings::ParseGamedata(after, os)), Differing(kills(before), kills(after)) };
+}
+
 ChosenGamedata FromIndex(std::string bytes, GamedataSource source, bool cached, const Index& index, std::string build)
 {
     ChosenGamedata chosen{ std::move(bytes), {} };
@@ -337,39 +423,14 @@ ChosenGamedata Choose(const GamedataSourceInputs& inputs, std::vector<std::strin
         return bundled;
     }
 
-    std::string base = inputs.feedUrl;
-    while (!base.empty() && base.back() == '/')
-        base.pop_back();
+    const auto base = FeedBase(inputs.feedUrl);
     const auto keys = TrustedKeys(inputs.publicKeys, warnings);
     const auto cache = inputs.gamedataDir.empty() ? fs::path() : inputs.gamedataDir / kCacheDir;
 
-    std::optional<Index> stored;
-    if (const auto file = ReadFile(cache.empty() ? fs::path() : cache / kCachedIndex))
-    {
-        const auto split = std::min(file->size(), kKeyIdSize + kSignatureSize);
-        std::string error;
-        stored = AcceptIndex(file->substr(split), file->substr(0, split), keys, error);
-        if (!stored) warnings.push_back("cached " + error + ", ignored");
-    }
-
-    // Rollback protection: never below the highest seq accepted so far, nor below the release's floor.
-    const auto floor = std::max(inputs.seqFloor, stored ? stored->seq : 0);
-    std::optional<Index> fetched;
-    {
-        std::string error;
-        auto index = Fetch(*inputs.transport, base + "/index.json", kIndexCap, error);
-        auto signature = error.empty() ? Fetch(*inputs.transport, base + "/index.json.sig", kSignatureCap, error) : "";
-        if (error.empty()) fetched = AcceptIndex(std::move(index), std::move(signature), keys, error);
-        if (fetched && fetched->seq < floor)
-        {
-            error = "Gamedata Feed index seq " + std::to_string(fetched->seq) + " is below the highest accepted seq " +
-                    std::to_string(floor) + ", rejected as a rollback";
-            fetched.reset();
-        }
-        if (!error.empty()) warnings.push_back(error);
-    }
-    if (fetched && !cache.empty() && (!stored || stored->signature != fetched->signature || stored->bytes != fetched->bytes))
-        WriteCacheFile(cache / kCachedIndex, fetched->signature + fetched->bytes, warnings);
+    const auto stored = StoredIndex(cache, keys, warnings);
+    const auto fetched =
+        FetchIndex(*inputs.transport, base, keys, std::max(inputs.seqFloor, stored ? stored->seq : 0), "", warnings).index;
+    if (fetched) CacheIndex(cache, stored, *fetched, warnings);
 
     const Index* index = fetched ? &*fetched : stored ? &*stored : nullptr;
     if (index == nullptr) return bundled;
@@ -468,6 +529,54 @@ ChosenGamedata ChooseGamedata(const GamedataSourceInputs& inputs)
     }
     chosen.provenance.warnings = std::move(warnings);
     return chosen;
+}
+
+PollResult PollGamedataFeed(const GamedataSourceInputs& inputs, std::string_view running, const std::string& etag)
+{
+    PollResult result;
+    const auto& revision = inputs.build.sourceRevision;
+    if (inputs.transport == nullptr || inputs.gamedataDir.empty() || !Revision(revision)) return result;
+    try
+    {
+        const auto base = FeedBase(inputs.feedUrl);
+        const auto keys = TrustedKeys(inputs.publicKeys, result.warnings);
+        const auto cache = inputs.gamedataDir / kCacheDir;
+        const auto stored = StoredIndex(cache, keys, result.warnings);
+        const auto fetched =
+            FetchIndex(*inputs.transport, base, keys, std::max(inputs.seqFloor, stored ? stored->seq : 0), etag, result.warnings);
+        result.etag = fetched.etag;
+        if (!fetched.index) return result;
+
+        const auto& index = *fetched.index;
+        if (const auto entry = EntryFor(index, revision, inputs.os))
+        {
+            const auto path = SnapshotPath(cache, revision, inputs.os);
+            const auto staged = ReadFile(path);
+            if (!Matches(running, *entry) && !(staged && Matches(*staged, *entry)))
+            {
+                result.etag.clear(); // unless staged below, fetch it all again next time
+                std::string error;
+                const auto snapshot = FetchSnapshot(*inputs.transport, base, *entry, inputs.os, error);
+                if (!snapshot)
+                {
+                    result.warnings.push_back(error);
+                    return result;
+                }
+                if (!WriteCacheFile(path, *snapshot, result.warnings)) return result;
+                result.update = GamedataUpdate{ entry->label, index.seq, DiffGamedata(running, *snapshot, inputs.os) };
+                result.etag = fetched.etag;
+            }
+        }
+        // After the snapshot: a crash in between leaves the old index, and the next boot fetches the snapshot again.
+        CacheIndex(cache, stored, index, result.warnings);
+    }
+    catch (const std::exception& ex)
+    {
+        result.update.reset();
+        result.etag.clear();
+        result.warnings.push_back(std::string("Gamedata Feed index unreadable: ") + ex.what());
+    }
+    return result;
 }
 
 std::string FormatProvenance(const Provenance& provenance)

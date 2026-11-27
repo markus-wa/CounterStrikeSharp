@@ -94,6 +94,35 @@ struct ChosenGamedata
 // feed. With the feed off, the bundled bytes, and nothing is fetched or read from the cache.
 ChosenGamedata ChooseGamedata(const GamedataSourceInputs& inputs);
 
+// What differs between the Gamedata the server runs on and a newer snapshot for its build, for this OS.
+struct GamedataChanges
+{
+    std::vector<std::string> keys; // Gamedata keys added, removed or changed, sorted
+    std::vector<std::string> killSwitches; // Engine Feature ids whose Kill Switch was added, removed or changed, sorted
+};
+
+// A newer verified snapshot for the running build, staged in the Gamedata cache: the next boot applies it.
+struct GamedataUpdate
+{
+    std::string build; // the snapshot's build label
+    std::uint64_t seq = 0; // the seq of the signed index that vouches for it
+    GamedataChanges changes; // against the running Gamedata
+};
+
+struct PollResult
+{
+    std::optional<GamedataUpdate> update; // only the poll that staged it reports it
+    std::string etag; // the index's ETag for the next poll's If-None-Match; empty: fetch it in full next time
+    std::vector<std::string> warnings; // why this poll found nothing
+};
+
+// One poll while the server runs (gamedata applies at boot only). Asks the feed for its index (conditionally on etag),
+// verifies it as ChooseGamedata does (signature, rollback against the cached index and seqFloor) and caches it. When it
+// lists a snapshot for this build and OS that is neither the running Gamedata nor staged already, fetches and verifies
+// that snapshot and stages it in the cache. Uses inputs' transport, feed, keys, build, os, gamedataDir and seqFloor; does
+// nothing without a transport or a gamedataDir (the cache is the record of what was staged). Never throws.
+PollResult PollGamedataFeed(const GamedataSourceInputs& inputs, std::string_view running, const std::string& etag);
+
 // One line, e.g. "Gamedata: exact build 1.42.0.1 (SourceRevision 11268945) from the Gamedata Feed, seq 7, key
 // de4a068ed7d94def", "Gamedata: carried forward from build 1.41.9.7 (SourceRevision 11228971) in the Gamedata cache, seq
 // 7, key de4a068ed7d94def" or "Gamedata: bundled gamedata.json; warnings: index signature invalid".

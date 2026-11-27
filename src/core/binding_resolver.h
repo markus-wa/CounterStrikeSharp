@@ -42,6 +42,8 @@ struct SlotGamedata
     std::optional<vtable::FingerprintWindow> window; // "vtable.<os>.window"
     bool uniqueNearby = false; // "vtable.<os>.uniqueNearby"
     std::optional<std::size_t> vtableSize; // "vtable.<os>.size"
+
+    friend bool operator==(const SlotGamedata&, const SlotGamedata&) = default;
 };
 
 // One Gamedata key as seen by this OS.
@@ -54,6 +56,8 @@ struct GamedataEntry
     std::optional<std::int64_t> offset; // "offsets.<os>"
     bool offsetBlank = false; // "offsets.<os>": null, a Kill Switch (for a Slot Binding: its slot index)
     std::optional<SlotGamedata> slot; // "vtable", if present
+
+    friend bool operator==(const GamedataEntry&, const GamedataEntry&) = default;
 };
 
 using Gamedata = std::map<std::string, GamedataEntry, std::less<>>;

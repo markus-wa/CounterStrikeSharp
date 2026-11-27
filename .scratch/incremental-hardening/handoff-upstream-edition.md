@@ -91,7 +91,7 @@ Figures that need care (reconciled in the internal report; if you use them, keep
   - no ticket counts, must/later, "ready", ADRs, fork-first decisions or "no upstream PRs for now";
   - no file paths, agent or session mentions;
   - no "spec" jargon: call them proposals or steps A–D.
-- **Define terms on first use:** binding, slot, gamedata, T2/auto-publish, ideal stack, effective outage. Avoid letter overload: steps A–D are the only letters; write outcomes as words.
+- **Define terms on first use:** binding, slot, gamedata, T2/auto-publish, ideal stack, effective outage. Letters follow the registry in `README.md` (tier0 + structs is E, the own loader is D); no other bare letters, write outcomes and incident categories as words.
 - **Issue numbers** always name the repo (CounterStrikeSharp #1502, Metamod #278, s2sdk PR #128).
 
 ## Deliverable

@@ -7,6 +7,32 @@ Planning workspace for making CounterStrikeSharp survive CS2 game updates with f
 - Full archive (binaries, old build images, cloned repos; 6.2G, outside git): `~/dev/other/cssharp-hardening-research/scratchpad/`.
 - Live report: https://claude.ai/artifact/CkhPT5n5hbWJyW3SZcy7y4
 
+## Letter registry (canonical, 2026-11-27)
+
+Single capital letters name **workstreams** only, and only as listed here. Every doc, artifact, note and ticket uses these; nothing else gets a bare single letter. New work takes the next free letter (skip I and T, which prefix I1–I7 and T1/T2).
+
+| Letter | Workstream | Where |
+|---|---|---|
+| A | Fail soft per Engine Feature (I1–I3) | `.scratch/hardening-a-fail-soft/` |
+| B | Vtable Checks, Slot Bindings, Heal (I4, I5) | `.scratch/hardening-b-boot-verify/` |
+| C | Signed Gamedata Feed, Kill Switch, CI per build (I6, I7) | `.scratch/hardening-c-fast-fix/` |
+| D | Own loader, opt-in Proxy Mode | `.scratch/hardening-d-own-loader/` |
+| E | tier0 at runtime + struct layout checks | `.scratch/hardening-e-tier0-structs/` |
+| F | Cut the A+B fork release | `incremental-hardening/issues/01` (candidate 1) |
+| G | `IGameSystem` slot-shift safety | `incremental-hardening/issues/01` (candidate 2) |
+| H | Plugin Gamedata in the feed (likely wontfix) | `incremental-hardening/issues/01` (candidate 3) |
+| J | Correct the backtest artifact | `incremental-hardening/issues/01` (candidate 4) |
+| K | Managed VTable constructor argument swap | Backlog below |
+| L | Resolver PoC (auto-heal ideal stack, T2) | `~/dev/cs2-0downtime-mod-stack-poc/.scratch/resolver-poc/` |
+| M | Build archiver + `archived.json` new-build event | `~/dev/cs2-0downtime-mod-stack-poc/.scratch/build-archive/` |
+| N | PGL plugin-side levers | PGL-ESPORTS/esportal-monorepo#1420 |
+
+Rules:
+- **Tickets:** `<letter><NN>`, e.g. C09, D13, L28. A spec's sub-steps use its letter plus a number (the upstream note's C1–C5 are C's).
+- **Incident categories** (backtest, model) are words, never letters, e.g. `link` (tier0/loader), `struct` (hard-coded layout), `game-system` (IGameSystem), `semantic` (behaviour change).
+- **Unchanged:** I1–I7 (T1 items), T1/T2 (tiers).
+- The upstream note and every artifact use the same letters: tier0 + structs is **E**, the own loader is **D**.
+
 ## Decisions (grilling round 1, 2026-11-24)
 
 - Scope: T1 only (I1–I7); T2 auto-regen later, separately. See ADR-0001.
@@ -117,7 +143,7 @@ Planning workspace for making CounterStrikeSharp survive CS2 game updates with f
 
 - Upstream-note alignment Q2. A–C leave 329 outage hours, all from tier0 link breaks and hard-coded struct layouts. Hand estimate: both together → ~147 h (Metamod floor); with D → near 0. Not modelled.
 - Investigation first: `.scratch/hardening-e-tier0-structs/issues/01-investigate-tier0-imports-and-struct-layouts.md` (research, must). It decides whether to spec E. Amends ADR-0001's "out of T1" only if E gets specced.
-- The upstream note shows it as step D, "consider" (both parts "investigate"), and the own loader as step E. The note's letters differ from the local spec dirs, where spec D is the own loader.
+- The upstream note badges it "consider" (both parts "investigate"). Letters follow the registry above: tier0 + structs is E, the own loader is D (the note used to swap them).
 
 ## Backlog (not ticketed)
 

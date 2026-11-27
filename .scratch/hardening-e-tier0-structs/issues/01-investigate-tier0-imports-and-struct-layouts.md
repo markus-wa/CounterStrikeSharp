@@ -12,7 +12,7 @@ Type: research
 
 ## Why
 
-After A–C, 329 outage hours remain over 7 incidents. All of them come from tier0 link breaks (L, 4 incidents) and hard-coded struct layouts (T, 6 incidents). Hand estimate from `G1/model.py` + `own-loader/findings.md`:
+After A–C, 329 outage hours remain over 7 incidents. All of them come from tier0 link breaks (`link`, 4 incidents) and hard-coded struct layouts (`struct`, 6 incidents). Hand estimate from `G1/model.py` + `own-loader/findings.md`:
 
 | On top of A–C | Outage left |
 |---|---|
@@ -47,7 +47,7 @@ This is the biggest lever left, and the only thing that makes D move hours. It i
    - any others the code uses.
 
    For each one:
-   - how often it changed in the ~12 T incidents;
+   - how often it changed in the ~12 `struct` incidents;
    - which plugin-visible APIs or core features depend on it;
    - whether it can be checked at boot: a size via RTTI or allocator, a field via schema or a known accessor's disassembly, or a fingerprint of a function that reads it.
 5. **Re-run the estimate.** Add "tier0 at runtime", "struct checks" and "both" scenarios (with and without D) to the backtest (`specsplit/split.py` or `G1/model.py`), replacing the hand estimate above. Keep the assumption about M/G kill-switch softening explicit.

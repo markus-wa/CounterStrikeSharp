@@ -12,6 +12,7 @@
 #endif
 
 #include "core/compiled_slots.h"
+#include "core/coreconfig.h"
 #include "core/gameconfig.h"
 #include "core/globals.h"
 #include "core/log.h"
@@ -31,10 +32,12 @@ constexpr Platform kPlatform = Platform::Windows;
 constexpr Platform kPlatform = Platform::Linux;
 #endif
 
-// The resolver seam (ADR-0004): the only place core Bindings are located. Swap the adapter here.
+// The resolver seam (ADR-0004): the only place core Bindings are located. Swap the adapter here. Heal follows the
+// operator's HealEnabled setting.
 const IBindingResolver& Resolver()
 {
-    static const std::unique_ptr<IBindingResolver> resolver = std::make_unique<BuiltinResolver>(kPlatform);
+    static const std::unique_ptr<IBindingResolver> resolver =
+        std::make_unique<BuiltinResolver>(kPlatform, ResolverOptions{ globals::coreConfig->HealEnabled });
     return *resolver;
 }
 
@@ -108,7 +111,7 @@ void ResolveCoreBindings()
     for (auto& declaration : declarations)
         for (const auto& compiled : CompiledSlots())
             if (declaration.kind == BindingKind::Slot && declaration.key == compiled.key) declaration.compiledIndex = compiled.index;
-    coreReport = Resolver().Resolve(ReadBuildIdentity().Label(),gamedata, images, declarations);
+    coreReport = Resolver().Resolve(ReadBuildIdentity().Label(), gamedata, images, declarations);
     // Boot cost of resolving (signature scans, RTTI lookups, Vtable Checks), so a slow boot can be told apart.
     const std::chrono::duration<double, std::milli> elapsed = std::chrono::steady_clock::now() - start;
     const auto slotBindings = std::count_if(coreReport.Bindings().begin(), coreReport.Bindings().end(), [](const BindingResult& binding) {

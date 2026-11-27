@@ -28,3 +28,12 @@ Used by `/skill:wayfinder`. The **map** is a file with one **child** file per ti
 - **Frontier**: scan `.scratch/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
 - **Claim**: set `Status: claimed` and save before any work.
 - **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
+
+## `.scratch/` lives only on `hardening/plan`
+
+Code branches (spec, ticket, release, PR branches) must never carry `.scratch/`, in their tree or their history. Agent worktrees are created from the main checkout's HEAD, which is `hardening/plan`, so a fresh agent branch starts with `.scratch/` until it is reset onto its code base branch. Two hooks enforce this; install them once per clone (worktrees share them):
+
+    cp docs/agents/hooks/pre-commit docs/agents/hooks/pre-push "$(git rev-parse --git-common-dir)/hooks/"
+
+- `pre-commit` refuses a commit on any branch except `hardening/plan` while `.scratch/` is tracked.
+- `pre-push` refuses to push `.scratch/` (tree or new commits) to any branch except `hardening/plan`.

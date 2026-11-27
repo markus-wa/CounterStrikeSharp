@@ -1,0 +1,11 @@
+#!/bin/sh
+# Planning files (.scratch/) live only on hardening/plan; code branches must never carry them.
+# Installed 2026-11-27 after .scratch leaked into hardening/impl and the spec-a/*, spec-b/* ticket branches.
+branch=$(git symbolic-ref --quiet --short HEAD) || exit 0
+[ "$branch" = "hardening/plan" ] && exit 0
+if git ls-files --cached -- .scratch | grep -q .; then
+  echo "pre-commit: .scratch/ is tracked on '$branch'. Planning files live only on hardening/plan." >&2
+  echo "  The branch was probably created from hardening/plan. Recreate it from the code branch it builds on," >&2
+  echo "  e.g.  git reset --hard hardening/spec-c  (fresh branch)  or  git rm -r --cached .scratch" >&2
+  exit 1
+fi

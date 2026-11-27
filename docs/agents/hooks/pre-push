@@ -1,0 +1,15 @@
+#!/bin/sh
+# Refuse to push .scratch/ (tree or history) to any branch except hardening/plan.
+remote="$1"
+zero=0000000000000000000000000000000000000000
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue
+  [ "$remote_ref" = "refs/heads/hardening/plan" ] && continue
+  if git ls-tree -r --name-only "$local_sha" -- .scratch | grep -q . ||
+     git rev-list "$local_sha" --not --remotes="$remote" -- .scratch | grep -q .; then
+    echo "pre-push: $remote_ref would carry .scratch/ (tree or new commits). Planning files go only to hardening/plan." >&2
+    status=1
+  fi
+done
+exit $status

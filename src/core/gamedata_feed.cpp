@@ -21,6 +21,11 @@ constexpr std::string_view kBuiltinKeys[] = {
 constexpr std::size_t kKeyIdSize = 8;
 constexpr std::size_t kSignatureSize = 64;
 
+// Download caps (the transport cuts a longer body off): today's Gamedata is ~34 KB.
+constexpr std::size_t kIndexCap = 64 * 1024;
+constexpr std::size_t kSignatureCap = 256;
+constexpr std::size_t kSnapshotCap = 1024 * 1024;
+
 std::string ToHex(const std::uint8_t* bytes, std::size_t size)
 {
     static constexpr char digits[] = "0123456789abcdef";
@@ -97,9 +102,9 @@ bool VerifyIndex(std::string_view index, std::string_view signature, const std::
     return true;
 }
 
-std::string Fetch(const http::Transport& transport, const std::string& url, std::string& error)
+std::string Fetch(const http::Transport& transport, const std::string& url, std::size_t maxBytes, std::string& error)
 {
-    auto result = transport.Get(url);
+    auto result = transport.Get({ url, maxBytes });
     if (!result.body) error = "Gamedata Feed unreachable: " + url + ": " + result.error;
     return result.body.value_or("");
 }
@@ -118,9 +123,9 @@ std::optional<std::string> FromFeed(const GamedataSourceInputs& inputs, Provenan
         base.pop_back();
 
     const auto keys = TrustedKeys(inputs.publicKeys, provenance.warnings);
-    const auto index = Fetch(*inputs.transport, base + "/index.json", error);
+    const auto index = Fetch(*inputs.transport, base + "/index.json", kIndexCap, error);
     if (!error.empty()) return std::nullopt;
-    const auto signature = Fetch(*inputs.transport, base + "/index.json.sig", error);
+    const auto signature = Fetch(*inputs.transport, base + "/index.json.sig", kSignatureCap, error);
     if (!error.empty()) return std::nullopt;
     if (!VerifyIndex(index, signature, keys, provenance.keyId, error)) return std::nullopt;
 
@@ -138,7 +143,7 @@ std::optional<std::string> FromFeed(const GamedataSourceInputs& inputs, Provenan
     const auto size = entry.at("size").get<std::uint64_t>();
     const auto sha256 = entry.at("sha256").get<std::string>();
 
-    auto snapshot = Fetch(*inputs.transport, base + "/" + file, error);
+    auto snapshot = Fetch(*inputs.transport, base + "/" + file, kSnapshotCap, error);
     if (!error.empty()) return std::nullopt;
     const auto digest = Sha256(snapshot);
     if (snapshot.size() != size || ToHex(digest.data(), digest.size()) != sha256)

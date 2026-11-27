@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <condition_variable>
+#include <functional>
 #include <fstream>
 #include <iterator>
 #include <mutex>
@@ -24,10 +25,21 @@ feed::GamedataSourceInputs inputs; // this boot's, without a transport: the poll
 feed::ChosenGamedata chosen;
 
 ScriptCallback* updateAvailable = nullptr;
-std::thread poll;
-std::mutex pollMutex;
-std::condition_variable pollWake;
-bool pollStop = false;
+
+// The poll thread and everything it touches. On the heap and deleted only by StopGamedataPoll: a process that exits
+// without unloading the plugin (the server's quit) ends the thread with it, and must not run the destructors of a
+// joinable thread (std::terminate) or of a condition variable it waits on (blocks the exit).
+struct Poll
+{
+    feed::GamedataSourceInputs inputs; // without a transport: each poll makes its own
+    std::string running; // the Gamedata this boot runs on
+    std::chrono::minutes interval;
+    std::mutex mutex;
+    std::condition_variable wake;
+    bool stop = false;
+    std::thread thread;
+};
+Poll* poll = nullptr;
 
 std::string Join(const std::vector<std::string>& items)
 {
@@ -50,17 +62,17 @@ void RaiseUpdateAvailable(const feed::GamedataUpdate& update)
     updateAvailable->Execute();
 }
 
-void PollLoop(std::chrono::minutes interval)
+void PollLoop(Poll& state)
 {
     std::string etag;
-    std::unique_lock lock(pollMutex);
-    while (!pollWake.wait_for(lock, interval, [] { return pollStop; }))
+    std::unique_lock lock(state.mutex);
+    while (!state.wake.wait_for(lock, state.interval, [&] { return state.stop; }))
     {
         lock.unlock();
-        auto pollInputs = inputs;
+        auto inputs = state.inputs;
         const http::HttpTransport transport; // one fetch: its own deadline and byte budget
-        pollInputs.transport = &transport;
-        const auto result = feed::PollGamedataFeed(pollInputs, chosen.bytes, etag);
+        inputs.transport = &transport;
+        const auto result = feed::PollGamedataFeed(inputs, state.running, etag);
         etag = result.etag;
         for (const auto& warning : result.warnings)
             CSSHARP_CORE_WARN("Gamedata Feed poll: {}", warning);
@@ -130,18 +142,23 @@ void StartGamedataPoll()
     updateAvailable = globals::callbackManager.CreateCallback("OnGamedataUpdateAvailable");
     const auto minutes = globals::coreConfig->GamedataFeedPollMinutes;
     if (!globals::coreConfig->GamedataFeedEnabled || minutes <= 0) return;
-    pollStop = false;
-    poll = std::thread(PollLoop, std::chrono::minutes(minutes));
+    poll = new Poll{ inputs, chosen.bytes, std::chrono::minutes(minutes) };
+    poll->thread = std::thread(PollLoop, std::ref(*poll));
 }
 
 void StopGamedataPoll()
 {
+    if (poll != nullptr)
     {
-        const std::lock_guard lock(pollMutex);
-        pollStop = true;
+        {
+            const std::lock_guard lock(poll->mutex);
+            poll->stop = true;
+        }
+        poll->wake.notify_all();
+        poll->thread.join();
+        delete poll;
+        poll = nullptr;
     }
-    pollWake.notify_all();
-    if (poll.joinable()) poll.join();
     if (updateAvailable != nullptr) globals::callbackManager.ReleaseCallback(updateAvailable);
     updateAvailable = nullptr;
 }

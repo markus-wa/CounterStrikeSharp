@@ -112,6 +112,7 @@ gamedata_jq=() core_jq=() server_patches=() plugins=() plugin_projects=() execs=
 ready=('Finished loading plugin Native Tests' 'Host activate: Loading \(')
 expect=() expect_not=() checks=()
 
+flags=${*@Q} # for summary.txt, so runs can be filtered by how they were started
 die() { echo "e2e: $*" >&2; exit 1; }
 log() { echo "e2e: $*" >&2; }
 
@@ -593,6 +594,7 @@ if [ "$check_failures" -gt 0 ] && [ "$rc" = 0 ]; then status="$check_failures ch
 {
     echo "status: $status"
     echo "exit: $rc"
+    echo "flags: $flags"
     echo "build: $(cat "$PKG/BUILD")"
     echo "map: $map port: $port"
     echo "boot_seconds: $boot_secs"

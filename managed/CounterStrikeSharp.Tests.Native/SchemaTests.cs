@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using CounterStrikeSharp.API;
@@ -68,6 +69,87 @@ public class SchemaTests
         var offset2 = Schema.GetSchemaOffset("CBaseEntity", "m_iHealth");
 
         Assert.Equal(offset1, offset2);
+    }
+
+    [Fact]
+    public void GetSchemaOffset_MissingField_ThrowsTypedExceptionEveryTime()
+    {
+        var first = Assert.Throws<SchemaFieldNotFoundException>(() => Schema.GetSchemaOffset("CBaseEntity", "m_cssharpDoesNotExist"));
+        Assert.Equal("CBaseEntity", first.ClassName);
+        Assert.Equal("m_cssharpDoesNotExist", first.FieldName);
+        Assert.False(first.ClassMissing);
+
+        // The miss is cached (and logged once), but every access still throws.
+        Assert.Throws<SchemaFieldNotFoundException>(() => Schema.GetSchemaOffset("CBaseEntity", "m_cssharpDoesNotExist"));
+    }
+
+    [Fact]
+    public void GetSchemaOffset_MissingClass_ThrowsTypedException()
+    {
+        var exception = Assert.Throws<SchemaFieldNotFoundException>(() => Schema.GetSchemaOffset("CCssharpDoesNotExist", "m_iHealth"));
+        Assert.Equal("CCssharpDoesNotExist", exception.ClassName);
+        Assert.Equal("m_iHealth", exception.FieldName);
+        Assert.True(exception.ClassMissing);
+    }
+
+    // SchemaMissMode: throw (the e2e case runs the suite with it); in warn mode the test below covers the accessors.
+    [Fact]
+    public void GetSchemaValue_MissingField_ThrowsInsteadOfReadingOffsetZero()
+    {
+        if (CoreConfig.SchemaMissMode != SchemaMissMode.Throw) return;
+
+        var world = Utilities.FindAllEntitiesByDesignerName<CWorld>("worldent").FirstOrDefault();
+        Assert.NotNull(world);
+
+        Assert.Throws<SchemaFieldNotFoundException>(() => Schema.GetSchemaValue<int>(world.Handle, "CBaseEntity", "m_cssharpDoesNotExist"));
+        Assert.Throws<SchemaFieldNotFoundException>(() => Schema.SetSchemaValue(world.Handle, "CBaseEntity", "m_cssharpDoesNotExist", 1));
+    }
+
+    // SchemaMissMode: warn (the default for now).
+    [Fact]
+    public void GetSchemaValue_MissingField_InWarnMode_ReadsDefaultAndDropsWritesWithoutTouchingOffsetZero()
+    {
+        if (CoreConfig.SchemaMissMode != SchemaMissMode.Warn) return;
+
+        var world = Utilities.FindAllEntitiesByDesignerName<CWorld>("worldent").FirstOrDefault();
+        Assert.NotNull(world);
+        var atOffsetZero = Marshal.ReadIntPtr(world.Handle);
+        var health = world.Health;
+
+        Assert.Equal(0, Schema.GetSchemaValue<int>(world.Handle, "CBaseEntity", "m_cssharpDoesNotExist"));
+        Assert.Equal(0, Schema.GetRef<int>(world.Handle, "CBaseEntity", "m_cssharpDoesNotExist"));
+        Schema.SetSchemaValue(world.Handle, "CBaseEntity", "m_cssharpDoesNotExist", 1);
+        Schema.GetRef<int>(world.Handle, "CBaseEntity", "m_cssharpDoesNotExist") = 1;
+        Assert.Equal(0, Schema.GetRef<int>(world.Handle, "CCssharpDoesNotExist", "m_iHealth"));
+
+        Assert.Equal(atOffsetZero, Marshal.ReadIntPtr(world.Handle));
+        Assert.Equal(health, world.Health);
+    }
+
+    // Only some classes have a chain entity; probing one that has none is not a missing field.
+    [Fact]
+    public void SetStateChanged_ClassWithoutChainEntity_DoesNotThrow()
+    {
+        var world = Utilities.FindAllEntitiesByDesignerName<CWorld>("worldent").FirstOrDefault();
+        Assert.NotNull(world);
+
+        Utilities.SetStateChanged(world, "CBaseEntity", "m_iHealth");
+    }
+
+    [Fact]
+    public void GetSchemaValueByName_NativeMissingField_ThrowsInsteadOfReadingOffsetZero()
+    {
+        var world = Utilities.FindAllEntitiesByDesignerName<CWorld>("worldent").FirstOrDefault();
+        Assert.NotNull(world);
+
+        Assert.Throws<NativeException>(() =>
+            NativeAPI.GetSchemaValueByName<int>(world.Handle, (int)DataType.DATA_TYPE_INT, "CCssharpDoesNotExist", "m_iHealth"));
+    }
+
+    [Fact]
+    public void GetSchemaClassSize_MissingClass_ReturnsMinusOne()
+    {
+        Assert.Equal(-1, Schema.GetClassSize("CCssharpDoesNotExist"));
     }
 
     [Fact]

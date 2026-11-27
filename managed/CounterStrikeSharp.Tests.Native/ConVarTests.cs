@@ -10,8 +10,7 @@ public class ConVarTests
     [Fact]
     public async Task BoolConVar()
     {
-        Server.ExecuteCommand("sv_cheats 1");
-        await WaitOneFrame();
+        await ExecuteCommandAsync("sv_cheats 1");
 
         var boolConVar = ConVar<bool>.Find("sv_cheats");
         Assert.NotNull(boolConVar);
@@ -24,15 +23,13 @@ public class ConVarTests
 
         boolConVar.Value = false;
         Assert.False(boolConVar.Value);
-        Server.ExecuteCommand("sv_cheats 1");
-        await WaitOneFrame();
+        await ExecuteCommandAsync("sv_cheats 1");
     }
 
     [Fact]
     public async Task IntConVar()
     {
-        Server.ExecuteCommand("mp_td_dmgtokick 300");
-        await WaitOneFrame();
+        await ExecuteCommandAsync("mp_td_dmgtokick 300");
 
         var intConVar = ConVar<int>.Find("mp_td_dmgtokick");
         Assert.NotNull(intConVar);
@@ -47,8 +44,7 @@ public class ConVarTests
     [Fact]
     public async Task FloatConVar()
     {
-        Server.ExecuteCommand("inferno_damage 40.0");
-        await WaitOneFrame();
+        await ExecuteCommandAsync("inferno_damage 40.0");
 
         var floatConVar = ConVar<float>.Find("inferno_damage");
         Assert.NotNull(floatConVar);
@@ -62,8 +58,7 @@ public class ConVarTests
     [Fact]
     public async Task VectorConVar()
     {
-        Server.ExecuteCommand("fog_color -1 -1 -1");
-        await WaitOneFrame();
+        await ExecuteCommandAsync("fog_color -1 -1 -1");
 
         var vectorConVar = ConVar<Vector>.Find("fog_color");
         Assert.NotNull(vectorConVar);
@@ -80,8 +75,7 @@ public class ConVarTests
     [Fact]
     public async Task StringConVar()
     {
-        Server.ExecuteCommand("mp_backup_round_file backup");
-        await WaitOneFrame();
+        await ExecuteCommandAsync("mp_backup_round_file backup");
 
         var stringConVar = ConVar<string>.Find("mp_backup_round_file");
         Assert.NotNull(stringConVar);

@@ -20,13 +20,16 @@
 #include <ios>
 #include <sstream>
 
+#include "core/core_bindings.h"
 #include "core/log.h"
 #include "core/managers/entity_manager.h"
 #include "core/managers/player_manager.h"
 #include "core/memory.h"
 #include "core/recipientfilters.h"
 #include "entitykeyvalues.h"
+#include "core/engine_server_calls.h"
 #include "scripting/autonative.h"
+#include "scripting/engine_feature_natives.h"
 #include "scripting/script_engine.h"
 
 namespace counterstrikesharp {
@@ -69,9 +72,10 @@ CEntityInstance* GetEntityFromIndex(ScriptContext& script_context)
 int GetUserIdFromIndex(ScriptContext& scriptContext)
 {
     auto entityIndex = scriptContext.GetArgument<int>(0);
+    if (!RequireEngineFeature(scriptContext, bindings::features::PlayerUserId)) return -1;
 
     // CPlayerSlot is 1 less than index
-    return globals::engine->GetPlayerUserId(CPlayerSlot(entityIndex - 1)).Get();
+    return engine_server::GetPlayerUserId(CPlayerSlot(entityIndex - 1));
 }
 
 const char* GetDesignerName(ScriptContext& scriptContext)
@@ -102,6 +106,13 @@ void DispatchSpawn(ScriptContext& scriptContext)
 {
     auto entity = scriptContext.GetArgument<void*>(0);
     auto keyValues = scriptContext.GetArgument<CEntityKeyValues*>(1);
+
+    if (!CBaseEntity_DispatchSpawn)
+    {
+        scriptContext.ThrowNativeError("%s", bindings::DescribeUnavailable(bindings::features::EntityDispatchSpawn).c_str());
+        return;
+    }
+
     CBaseEntity_DispatchSpawn(entity, keyValues);
 }
 
@@ -460,8 +471,9 @@ void PrintToConsole(ScriptContext& scriptContext)
 {
     auto index = scriptContext.GetArgument<int>(0);
     auto message = scriptContext.GetArgument<const char*>(1);
+    if (!RequireEngineFeature(scriptContext, bindings::features::PlayerPrintToConsole)) return;
 
-    globals::engine->ClientPrintf(CPlayerSlot{ index - 1 }, message);
+    engine_server::ClientPrintf(CPlayerSlot{ index - 1 }, message);
 }
 
 CEntityIdentity* GetFirstActiveEntity(ScriptContext& script_context)
@@ -542,7 +554,7 @@ void AcceptInput(ScriptContext& script_context)
 {
     if (!CEntityInstance_AcceptInput)
     {
-        script_context.ThrowNativeError("Failed to find signature for \'CEntityInstance_AcceptInput\'");
+        script_context.ThrowNativeError("%s", bindings::DescribeUnavailable(bindings::features::EntityAcceptInput).c_str());
         return;
     }
 
@@ -561,7 +573,7 @@ void AddEntityIOEvent(ScriptContext& script_context)
 {
     if (!CEntitySystem_AddEntityIOEvent)
     {
-        script_context.ThrowNativeError("Failed to find signature for \'CEntitySystem_AddEntityIOEvent\'");
+        script_context.ThrowNativeError("%s", bindings::DescribeUnavailable(bindings::features::EntityAddIoEvent).c_str());
         return;
     }
 
@@ -583,6 +595,12 @@ SoundEventGuid_t EmitSoundFilter(ScriptContext& script_context)
     auto sound = script_context.GetArgument<const char*>(2);
     auto volume = script_context.GetArgument<float>(3);
     auto pitch = script_context.GetArgument<float>(4);
+
+    if (!CBaseEntity_EmitSoundFilter)
+    {
+        script_context.ThrowNativeError("%s", bindings::DescribeUnavailable(bindings::features::EntityEmitSound).c_str());
+        return 0;
+    }
 
     CRecipientFilter filter{};
     filter.AddRecipientsFromMask(filtermask);

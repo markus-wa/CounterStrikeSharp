@@ -37,7 +37,11 @@
 #include <public/inetchannelinfo.h>
 #include <engine2/inetworkgameserver.h>
 
+#include "core/core_bindings.h"
+#include "core/engine_server_calls.h"
 #include "core/log.h"
+#include "core/slot_binding_keys.h"
+#include "core/slot_hooks.h"
 #include "core/timer_system.h"
 #include "scripting/callback_manager.h"
 #include "player_manager.h"
@@ -52,13 +56,27 @@ void PlayerManager::OnStartup() {}
 
 void PlayerManager::OnAllInitialized()
 {
-    m_hooks.Add(&IServerGameClients::ClientConnect, globals::serverGameClients, this, &PlayerManager::OnClientConnect, nullptr);
-    m_hooks.Add(&IServerGameClients::ClientConnect, globals::serverGameClients, this, nullptr, &PlayerManager::OnClientConnect_Post);
-    m_hooks.Add(&IServerGameClients::ClientPutInServer, globals::serverGameClients, this, nullptr, &PlayerManager::OnClientPutInServer);
-    m_hooks.Add(&IServerGameClients::ClientDisconnect, globals::serverGameClients, this, &PlayerManager::OnClientDisconnect, nullptr);
-    m_hooks.Add(&IServerGameClients::ClientDisconnect, globals::serverGameClients, this, nullptr, &PlayerManager::OnClientDisconnect_Post);
-    m_hooks.Add(&IServerGameClients::ClientCommand, globals::serverGameClients, this, &PlayerManager::OnClientCommand, nullptr);
-    m_hooks.Add(&IServerGameClients::ClientVoice, globals::serverGameClients, this, nullptr, &PlayerManager::OnClientVoice);
+    // By the slot indices the boot Vtable Check verified, one Engine Feature per group. A disabled one hooks nothing:
+    // its listeners still register (the callbacks below are created regardless) and never fire.
+    namespace slots = bindings::slots;
+    constexpr SlotMethod kClientConnect{ slots::IServerGameClients_ClientConnect, &IServerGameClients::ClientConnect };
+    constexpr SlotMethod kClientPutInServer{ slots::IServerGameClients_ClientPutInServer, &IServerGameClients::ClientPutInServer };
+    constexpr SlotMethod kClientDisconnect{ slots::IServerGameClients_ClientDisconnect, &IServerGameClients::ClientDisconnect };
+    constexpr SlotMethod kClientCommand{ slots::IServerGameClients_ClientCommand, &IServerGameClients::ClientCommand };
+    constexpr SlotMethod kClientVoice{ slots::IServerGameClients_ClientVoice, &IServerGameClients::ClientVoice };
+    auto* clients = globals::serverGameClients;
+    if (bindings::ShouldRegisterHooks(bindings::features::PlayerConnectionEvents, "client connection hooks"))
+    {
+        HookSlot(m_hooks, kClientConnect, clients, this, &PlayerManager::OnClientConnect, nullptr);
+        HookSlot(m_hooks, kClientConnect, clients, this, nullptr, &PlayerManager::OnClientConnect_Post);
+        HookSlot(m_hooks, kClientPutInServer, clients, this, nullptr, &PlayerManager::OnClientPutInServer);
+        HookSlot(m_hooks, kClientDisconnect, clients, this, &PlayerManager::OnClientDisconnect, nullptr);
+        HookSlot(m_hooks, kClientDisconnect, clients, this, nullptr, &PlayerManager::OnClientDisconnect_Post);
+    }
+    if (bindings::ShouldRegisterHooks(bindings::features::PlayerClientCommands, "ClientCommand hook"))
+        HookSlot(m_hooks, kClientCommand, clients, this, &PlayerManager::OnClientCommand, nullptr);
+    if (bindings::ShouldRegisterHooks(bindings::features::PlayerVoiceEvents, "ClientVoice hook"))
+        HookSlot(m_hooks, kClientVoice, clients, this, nullptr, &PlayerManager::OnClientVoice);
 
     m_on_client_connect_callback = globals::callbackManager.CreateCallback("OnClientConnect");
     m_on_client_connected_callback = globals::callbackManager.CreateCallback("OnClientConnected");
@@ -131,7 +149,7 @@ KHook::Return<bool> PlayerManager::OnClientConnect(IServerGameClients* hookThis,
         //        }
     }
 
-    m_user_id_lookup[globals::engine->GetPlayerUserId(slot).Get()] = client;
+    if (const auto userid = engine_server::GetPlayerUserId(slot); userid >= 0) m_user_id_lookup[userid] = client;
 
     return { KHook::Action::Ignore, true };
 }
@@ -313,7 +331,12 @@ int PlayerManager::ListenClient() const { return m_listen_client; }
 
 int PlayerManager::NumPlayers() const { return m_player_count; }
 
-int PlayerManager::MaxClients() const { return globals::getGlobalVars()->maxClients; }
+// -1 (no valid slot) without global vars: before a map, or cssharp.server/global-vars disabled.
+int PlayerManager::MaxClients() const
+{
+    const auto* globalVars = globals::getGlobalVars();
+    return globalVars ? globalVars->maxClients : -1;
+}
 
 CPlayer* PlayerManager::GetPlayerBySlot(int client) const
 {
@@ -412,8 +435,7 @@ void PlayerManager::RunThink() const
 
 void PlayerManager::InvalidatePlayer(CPlayer* pPlayer) const
 {
-    auto userid = globals::engine->GetPlayerUserId(pPlayer->m_slot);
-    if (userid.Get() != -1) m_user_id_lookup[userid.Get()] = 0;
+    if (const auto userid = engine_server::GetPlayerUserId(pPlayer->m_slot); userid >= 0) m_user_id_lookup[userid] = 0;
 
     pPlayer->Disconnect();
 }
@@ -436,32 +458,7 @@ bool CPlayer::IsFakeClient() const { return m_is_fake_client; }
 
 bool CPlayer::IsAuthorized() const { return m_is_authorized; }
 
-bool CPlayer::IsAuthStringValidated() const
-{
-    if (!IsFakeClient())
-    {
-        return globals::engine->IsClientFullyAuthenticated(m_slot);
-    }
-    return false;
-}
-
 void CPlayer::Authorize() { m_is_authorized = true; }
-
-void CPlayer::PrintToConsole(const char* message) const
-{
-    if (m_is_connected == false || m_is_fake_client == true)
-    {
-        return;
-    }
-
-    INetChannelInfo* pNetChan = globals::engine->GetPlayerNetInfo(m_slot);
-    if (pNetChan == nullptr)
-    {
-        return;
-    }
-
-    globals::engine->ClientPrintf(m_slot, message);
-}
 
 // void CPlayer::PrintToChat(const char *message)
 //{
@@ -480,8 +477,6 @@ void CPlayer::PrintToConsole(const char* message) const
 
 void CPlayer::SetName(const char* name) { m_name = strdup(name); }
 
-INetChannelInfo* CPlayer::GetNetInfo() const { return globals::engine->GetPlayerNetInfo(m_slot); }
-
 PlayerManager::PlayerManager()
 {
     m_players = new CPlayer[66];
@@ -499,16 +494,19 @@ void PlayerManager::RunAuthChecks()
 
     m_last_auth_check_time = globals::timerSystem.GetTickedTime();
 
+    // Disabled cssharp.player/authorization: OnClientAuthorized never fires (reported at boot and on registration).
+    if (!bindings::IsEngineFeatureAvailable(bindings::features::PlayerAuthorization)) return;
+
     for (int i = 0; i <= MaxClients(); i++)
     {
         if (m_players[i].IsConnected())
         {
             if (m_players[i].IsAuthorized() || m_players[i].IsFakeClient()) continue;
 
-            if (globals::engine->IsClientFullyAuthenticated(i))
+            if (engine_server::IsClientFullyAuthenticated(i))
             {
                 m_players[i].Authorize();
-                m_players[i].SetSteamId(globals::engine->GetClientSteamID(i));
+                m_players[i].SetSteamId(engine_server::GetClientSteamID(i));
                 OnAuthorized(&m_players[i]);
             }
         }
@@ -527,43 +525,14 @@ void PlayerManager::OnAuthorized(CPlayer* player) const
 
 bool CPlayer::WasCountedAsInGame() const { return m_is_in_game; }
 
-int CPlayer::GetUserId()
-{
-    if (m_user_id == -1)
-    {
-        m_user_id = globals::engine->GetPlayerUserId(m_slot).Get();
-    }
-
-    return m_user_id;
-}
-
 bool CPlayer::IsInGame() const
 {
     return m_is_in_game; // && (m_p_edict->GetUnknown() != nullptr);
 }
 
-void CPlayer::Kick(const char* kickReason)
-{
-    char buffer[255];
-    sprintf(buffer, "kickid %d %s\n", GetUserId(), kickReason);
-    globals::engine->ServerCommand(buffer);
-}
-
-const char* CPlayer::GetKeyValue(const char* key) const { return globals::engine->GetClientConVarValue(m_slot, key); }
-
 const char* CPlayer::GetIpAddress() const { return m_ip_address.c_str(); }
 
 int CPlayer::GetUserId() const { return m_user_id; }
-
-float CPlayer::GetTimeConnected() const
-{
-    if (!IsConnected() || IsFakeClient())
-    {
-        return 0;
-    }
-
-    return GetNetInfo()->GetTimeConnected();
-}
 
 void CPlayer::SetListen(CPlayerSlot slot, ListenOverride listen) { m_listenMap[slot.Get()] = listen; }
 

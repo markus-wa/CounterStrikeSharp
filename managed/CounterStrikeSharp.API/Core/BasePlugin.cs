@@ -150,7 +150,13 @@ namespace CounterStrikeSharp.API.Core
             var subscriber = new CallbackSubscriber(handler, handler,
                 () => DeregisterEventHandler(name, handler, post));
 
-            NativeAPI.HookEvent(name, subscriber.GetInputArgument(), post);
+            // Game events disabled: the handler stays registered (deregistering still works) but never fires.
+            if (EngineFeatures.Current.CheckRegistration(EngineFeatureNames.EventsGameEvents, "Game event handler",
+                    Logger ?? Application.Instance.Logger, this))
+            {
+                NativeAPI.HookEvent(name, subscriber.GetInputArgument(), post);
+            }
+
             Handlers[handler] = subscriber;
         }
 
@@ -219,6 +225,11 @@ namespace CounterStrikeSharp.API.Core
         /// <param name="mode">Whether to hook before or after the command is executed.</param>
         public void AddCommandListener(string? name, CommandInfo.CommandListenerCallback handler, HookMode mode = HookMode.Pre)
         {
+            // Registers either way: on a disabled cssharp.player/client-commands (client-typed commands) or
+            // cssharp.commands/console-dispatch (console-issued commands), those commands never reach it.
+            Bindings.ListenerEngineFeatures.CheckCommandListenerRegistration(EngineFeatures.Current,
+                Logger ?? Application.Instance.Logger, this);
+
             var wrappedHandler = new Func<int, IntPtr, HookResult>((i, ptr) =>
             {
                 var caller = (i != -1) ? new CCSPlayerController(NativeAPI.GetEntityFromIndex(i + 1)) : null;
@@ -294,6 +305,10 @@ namespace CounterStrikeSharp.API.Core
             Application.Instance.Logger.LogDebug("Registering listener for {ListenerName} with {ParameterCount} parameters",
                 listenerName, parameterTypes.Length);
 
+            // Registers either way; on a disabled Engine Feature the listener never fires, so say so once.
+            Bindings.ListenerEngineFeatures.CheckRegistration(EngineFeatures.Current, listenerName,
+                Logger ?? Application.Instance.Logger, this);
+
             var wrappedHandler = new Func<ScriptContext, HookResult>(context =>
             {
                 var args = new object[parameterTypes.Length];
@@ -367,6 +382,9 @@ namespace CounterStrikeSharp.API.Core
         /// <returns>An instance of the <see cref="Timer"/></returns>
         public Timer AddTimer(float interval, Action callback, TimerFlags? flags = null)
         {
+            // Timers run from GameFrame: on a disabled cssharp.server/game-frame they are kept but never fire.
+            EngineFeatures.Current.CheckRegistration(EngineFeatureNames.ServerGameFrame, "Timer",
+                Logger ?? Application.Instance.Logger, this);
             var timer = new Timer(interval, callback, flags ?? 0);
             Timers.Add(timer);
             return timer;
@@ -382,6 +400,9 @@ namespace CounterStrikeSharp.API.Core
         /// <returns>An instance of the <see cref="Timer"/></returns>
         public Timer AddTickTimer(int tickInterval, Action callback, TimerFlags? flags = null)
         {
+            // Like AddTimer: run from GameFrame, kept but never fired on a disabled cssharp.server/game-frame.
+            EngineFeatures.Current.CheckRegistration(EngineFeatureNames.ServerGameFrame, "Timer",
+                Logger ?? Application.Instance.Logger, this);
             var timer = new Timer(tickInterval * Server.TickInterval, callback, flags ?? 0);
             Timers.Add(timer);
             return timer;
@@ -595,7 +616,13 @@ namespace CounterStrikeSharp.API.Core
             var subscriber = new CallbackSubscriber(handler, handler,
                 () => UnhookEntityOutput(classname, outputName, handler));
 
-            NativeAPI.HookEntityOutput(classname, outputName, subscriber.GetInputArgument(), mode);
+            // On a disabled Engine Feature the hook stays registered but never fires (logged once).
+            if (EngineFeatures.Current.CheckRegistration(EngineFeatureNames.EntityOutputHooks, "Entity output hook",
+                    Logger ?? Application.Instance.Logger, this))
+            {
+                NativeAPI.HookEntityOutput(classname, outputName, subscriber.GetInputArgument(), mode);
+            }
+
             EntityOutputHooks[handler] = subscriber;
         }
 
@@ -604,6 +631,9 @@ namespace CounterStrikeSharp.API.Core
             var subscriber = new CallbackSubscriber(handler, handler,
                 () => UnhookUserMessage(messageId, handler));
 
+            // On a disabled Engine Feature the hook stays registered but never fires (logged once).
+            EngineFeatures.Current.CheckRegistration(EngineFeatureNames.NetworkUserMessages, "User message hook",
+                Logger ?? Application.Instance.Logger, this);
             NativeAPI.HookUsermessage(messageId, subscriber.GetInputArgument(), mode);
             Handlers[handler] = subscriber;
         }

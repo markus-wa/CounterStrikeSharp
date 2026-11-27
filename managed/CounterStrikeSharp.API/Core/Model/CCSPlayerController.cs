@@ -1,4 +1,5 @@
 using System;
+using CounterStrikeSharp.API.Core.Bindings;
 using CounterStrikeSharp.API.Modules.Cvars;
 using CounterStrikeSharp.API.Modules.Entities;
 using CounterStrikeSharp.API.Modules.Entities.Constants;
@@ -10,15 +11,25 @@ namespace CounterStrikeSharp.API.Core;
 
 public partial class CCSPlayerController
 {
-    public int? UserId => NativeAPI.GetUseridFromIndex((int)Index);
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/user-id</c> is disabled</exception>
+    public int? UserId
+    {
+        get
+        {
+            EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.PlayerUserId);
+            return NativeAPI.GetUseridFromIndex((int)Index);
+        }
+    }
     public CsTeam Team => (CsTeam)TeamNum;
 
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.items/give-named-item</c> is disabled</exception>
     public IntPtr GiveNamedItem(string item)
     {
         return GiveNamedItem<CEntityInstance>(item)?.Handle ?? IntPtr.Zero;
     }
 
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.items/give-named-item</c> is disabled</exception>
     public T? GiveNamedItem<T>(string item) where T : CEntityInstance
     {
         Guard.IsValidEntity(this);
@@ -26,6 +37,7 @@ public partial class CCSPlayerController
         return PlayerPawn.Value?.ItemServices?.As<CCSPlayer_ItemServices>().GiveNamedItem<T>(item);
     }
 
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.items/give-named-item</c> is disabled</exception>
     public IntPtr GiveNamedItem(CsItem item)
     {
         string? itemString = EnumUtils.GetEnumMemberAttributeValue(item);
@@ -38,40 +50,52 @@ public partial class CCSPlayerController
     }
 
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/print-to-console</c> is disabled</exception>
     public void PrintToConsole(string message)
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.PlayerPrintToConsole);
         Guard.IsValidEntity(this);
 
         NativeAPI.PrintToConsole((int)Index, $"{message}\n\0");
     }
 
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.network/user-messages</c> is disabled</exception>
     public void PrintToChat(string message)
     {
         Guard.IsValidEntity(this);
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.NetworkUserMessages);
 
         NativeAPI.ClientPrint(this.Slot, (int)HudDestination.Chat, message);
     }
 
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.network/user-messages</c> is disabled</exception>
     public void PrintToCenter(string message)
     {
         Guard.IsValidEntity(this);
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.NetworkUserMessages);
 
         NativeAPI.ClientPrint(this.Slot, (int)HudDestination.Center, message);
     }
 
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.network/user-messages</c> is disabled</exception>
     public void PrintToCenterAlert(string message)
     {
         Guard.IsValidEntity(this);
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.NetworkUserMessages);
 
         NativeAPI.ClientPrint(this.Slot, (int)HudDestination.Alert, message);
     }
 
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.events/fire-event-to-client</c> or
+    /// <c>cssharp.events/game-events</c> is disabled</exception>
     public void PrintToCenterHtml(string message) => PrintToCenterHtml(message, 5);
 
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.events/fire-event-to-client</c> or
+    /// <c>cssharp.events/game-events</c> is disabled</exception>
     public void PrintToCenterHtml(string message, int duration)
     {
         Guard.IsValidEntity(this);
@@ -90,6 +114,7 @@ public partial class CCSPlayerController
     /// Drops the active player weapon on the ground.
     /// </summary>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.items/drop-active-weapon</c> is disabled</exception>
     public void DropActiveWeapon()
     {
         Guard.IsValidEntity(this);
@@ -106,6 +131,7 @@ public partial class CCSPlayerController
     /// Removes every weapon from the player.
     /// </summary>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.items/remove-weapons</c> is disabled</exception>
     public void RemoveWeapons()
     {
         Guard.IsValidEntity(this);
@@ -119,6 +145,7 @@ public partial class CCSPlayerController
     /// <param name="explode"></param>
     /// <param name="force"></param>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/commit-suicide</c> is disabled</exception>
     public void CommitSuicide(bool explode, bool force)
     {
         Guard.IsValidEntity(this);
@@ -130,14 +157,17 @@ public partial class CCSPlayerController
     /// Respawn player
     /// </summary>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/respawn</c> or <c>cssharp.player/set-pawn</c>
+    /// is disabled</exception>
     public void Respawn()
     {
+        var offset = EngineFeatures.Current.GetOffset(ManagedEngineFeatures.PlayerRespawn, "CCSPlayerController_Respawn");
         Guard.IsValidEntity(this);
         if (PlayerPawn.Value == null) return;
 
         // The Call To Arms update appears to have invalidated the need for CCSPlayerPawn_Respawn.
         SetPawn(PlayerPawn.Value);
-        VirtualFunction.CreateVoid<IntPtr>(Handle, GameData.GetOffset("CCSPlayerController_Respawn"))(Handle);
+        VirtualFunction.CreateVoid<IntPtr>(Handle, offset)(Handle);
     }
 
     public bool IsBot => ((PlayerFlags)Flags).HasFlag(PlayerFlags.FL_FAKECLIENT);
@@ -147,6 +177,7 @@ public partial class CCSPlayerController
     /// </summary>
     /// <param name="team">The team to switch to</param>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/switch-team</c> is disabled</exception>
     public void SwitchTeam(CsTeam team)
     {
         Guard.IsValidEntity(this);
@@ -162,12 +193,13 @@ public partial class CCSPlayerController
     /// </summary>
     /// <param name="team">The team to change to</param>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/change-team</c> is disabled</exception>
     public void ChangeTeam(CsTeam team)
     {
+        var offset = EngineFeatures.Current.GetOffset(ManagedEngineFeatures.PlayerChangeTeam, "CCSPlayerController_ChangeTeam");
         Guard.IsValidEntity(this);
 
-        VirtualFunction.CreateVoid<IntPtr, CsTeam>(Handle, GameData.GetOffset("CCSPlayerController_ChangeTeam"))(Handle,
-            team);
+        VirtualFunction.CreateVoid<IntPtr, CsTeam>(Handle, offset)(Handle, team);
     }
 
     /// <summary>
@@ -176,8 +208,10 @@ public partial class CCSPlayerController
     /// <param name="conVar">Name of the convar to retrieve</param>
     /// <returns>ConVar string value</returns>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/get-convar-value</c> is disabled</exception>
     public string GetConVarValue(string conVar)
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.PlayerGetConvarValue);
         Guard.IsValidEntity(this);
 
         return NativeAPI.GetClientConvarValue(Slot, conVar);
@@ -200,8 +234,11 @@ public partial class CCSPlayerController
     /// <param name="value">String value to set</param>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
     /// <exception cref="InvalidOperationException">Player is not a bot</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/set-fake-client-convar</c> is
+    /// disabled</exception>
     public void SetFakeClientConVar(string conVar, string value)
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.PlayerSetFakeClientConvar);
         Guard.IsValidEntity(this);
         if (!IsBot) throw new InvalidOperationException("'SetFakeClientConVar' can only be called for fake clients (bots)");
 
@@ -234,8 +271,11 @@ public partial class CCSPlayerController
     /// </summary>
     /// <param name="command"></param>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/execute-client-command</c> is
+    /// disabled</exception>
     public void ExecuteClientCommand(string command)
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.PlayerExecuteClientCommand);
         Guard.IsValidEntity(this);
 
         NativeAPI.IssueClientCommand(Slot, command);
@@ -245,8 +285,10 @@ public partial class CCSPlayerController
     /// Disconnects a player from the server with the specified reason.
     /// </summary>
     /// <param name="reason"></param>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/disconnect</c> is disabled</exception>
     public void Disconnect(NetworkDisconnectionReason reason)
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.PlayerDisconnect);
         NativeAPI.DisconnectClient(Slot, (int)reason);
     }
 
@@ -256,8 +298,11 @@ public partial class CCSPlayerController
     /// </summary>
     /// <param name="command"></param>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature
+    /// <c>cssharp.player/execute-client-command-from-server</c> is disabled</exception>
     public void ExecuteClientCommandFromServer(string command)
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.PlayerExecuteClientCommandFromServer);
         Guard.IsValidEntity(this);
 
         NativeAPI.IssueClientCommandFromServer(Slot, command);
@@ -269,8 +314,10 @@ public partial class CCSPlayerController
     /// <param name="sender">Player talking in the voice chat</param>
     /// <param name="override">Whether the talker should be heard</param>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/set-listening</c> is disabled</exception>
     public void SetListenOverride(CCSPlayerController sender, ListenOverride @override)
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.PlayerSetListening);
         Guard.IsValidEntity(this);
 
         NativeAPI.SetClientListening(Handle, sender.Handle, (Byte)@override);
@@ -290,10 +337,13 @@ public partial class CCSPlayerController
     /// Returns the authorized SteamID of this user which has been validated with the SteamAPI.
     /// </summary>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.player/authorization</c> is disabled (no
+    /// player is ever authorized)</exception>
     public SteamID? AuthorizedSteamID
     {
         get
         {
+            EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.PlayerAuthorization);
             Guard.IsValidEntity(this);
 
             var authorizedSteamId = NativeAPI.GetPlayerAuthorizedSteamid(Slot);
@@ -325,6 +375,8 @@ public partial class CCSPlayerController
     /// Determines how the player interacts with voice chat.
     /// </summary>
     /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+    /// <exception cref="EngineFeatureUnavailableException">Setting it while Engine Feature <c>cssharp.player/set-listening</c> is
+    /// disabled</exception>
     public VoiceFlags VoiceFlags
     {
         get
@@ -335,12 +387,14 @@ public partial class CCSPlayerController
         }
         set
         {
+            EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.PlayerSetListening);
             Guard.IsValidEntity(this);
 
             NativeAPI.SetClientVoiceFlags(Handle, (Byte)value);
         }
     }
 
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/teleport</c> is disabled</exception>
     [Obsolete(
         "You are trying to call Teleport on a non-physical player. Maybe you mean Pawn? (See: https://docs.cssharp.dev/docs/guides/referencing-players.html#controllers--pawns)")]
     public new void Teleport(Vector? position = null, QAngle? angles = null, Vector? velocity = null)
@@ -348,8 +402,10 @@ public partial class CCSPlayerController
         base.Teleport(position, angles, velocity);
     }
 
+    /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.network/user-messages</c> is disabled</exception>
     public void ReplicateConVar(string conVar, string value)
     {
+        EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.NetworkUserMessages);
         NativeAPI.ReplicateConvar(Slot, conVar, value);
     }
 }

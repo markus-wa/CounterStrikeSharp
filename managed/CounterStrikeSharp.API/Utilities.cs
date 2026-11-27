@@ -56,6 +56,7 @@ namespace CounterStrikeSharp.API
             return FastNew.CreateInstance<T, IntPtr>(entityPtr.Value);
         }
 
+        /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/create</c> is disabled</exception>
         public static T? CreateEntityByName<T>(string name) where T : CBaseEntity
         {
             return FastNew.CreateInstance<T, IntPtr>(VirtualFunctions.UTIL_CreateEntityByName(name, -1))!;
@@ -97,6 +98,7 @@ namespace CounterStrikeSharp.API
             return new Target(pattern).GetTarget(player);
         }
 
+        /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/add-io-event</c> is disabled</exception>
         public static bool RemoveItemByDesignerName(this CCSPlayerController player, string designerName)
         {
             var weapon = player.PlayerPawn.Value?.WeaponServices?.MyWeapons
@@ -111,11 +113,13 @@ namespace CounterStrikeSharp.API
             return true;
         }
 
+        /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/add-io-event</c> is disabled</exception>
         public static bool RemoveItemByDesignerName(this CCSPlayerController player, string designerName, bool _)
         {
             return RemoveItemByDesignerName(player, designerName);
         }
 
+        /// <exception cref="EngineFeatureUnavailableException">Engine Feature <c>cssharp.entity/add-io-event</c> is disabled</exception>
         public static bool RemoveItemBySlot(this CCSPlayerController player, gear_slot_t slot)
         {
             var weapon = player.PlayerPawn.Value?.WeaponServices?.MyWeapons
@@ -247,7 +251,9 @@ namespace CounterStrikeSharp.API
             return FastNew.CreateInstance<T, IntPtr>(pointerTo);
         }
 
-        private static int FindSchemaChain(string className) => Schema.GetSchemaOffset(className, "__m_pChainEntity");
+        // Only some classes have a chain entity: a miss is the normal case, not a missing field to report.
+        private static int FindSchemaChain(string className) =>
+            Schema.TryGetSchemaOffset(className, "__m_pChainEntity", out var offset) ? offset : 0;
 
         /// <summary>
         /// Marks a field as changed for network transmission.
@@ -258,8 +264,10 @@ namespace CounterStrikeSharp.API
         /// <param name="fieldName" example="m_iHealth">Schema field name</param>
         /// <param name="extraOffset">Any additional offset to the schema field</param>
         /// <exception cref="InvalidOperationException">Entity is not valid</exception>
+        /// <exception cref="EngineFeatureUnavailableException"><c>cssharp.network/state-changed</c> is disabled.</exception>
         public static void SetStateChanged(CBaseEntity entity, string className, string fieldName, int extraOffset = 0)
         {
+            EngineFeatures.Current.ThrowIfUnavailable(EngineFeatureNames.NetworkStateChanged);
             Guard.IsValidEntity(entity);
 
             if (!Schema.IsSchemaFieldNetworked(className, fieldName))

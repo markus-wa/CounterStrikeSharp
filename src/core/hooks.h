@@ -38,7 +38,7 @@ template <class C, class R, class... Args> class VirtualHook final : public KHoo
     }
     void CheckRegistration(void** vtable)
     {
-        if (this->_vtbl_index < 0) throw std::runtime_error("Invalid virtual hook index");
+        if (this->_vtbl_index < 0) throw std::runtime_error("Invalid virtual hook slot index");
         std::lock_guard guard(this->_hooks_stored);
         if (this->_addr_hook_ids.find(vtable + this->_vtbl_index) == this->_addr_hook_ids.end())
             throw std::runtime_error("KHook could not register virtual hook");
@@ -85,29 +85,29 @@ class HookSet
             hooks->Clear();
     }
 
+    // Virtual hooks are registered only at a runtime slot index (a Slot Binding's verified index, see
+    // core/slot_hooks.h), never at a member function's compiled header position; function only supplies the signature.
     template <class F, class Instance, class Context, class Pre, class Post>
-    void Add(F function, Instance* instance, Context* context, Pre pre, Post post)
+    void AddIndex(int index, F function, Instance* instance, Context* context, Pre pre, Post post)
     {
         if (!instance) throw std::runtime_error("Cannot hook a null instance");
-        auto hook = std::make_unique<typename VirtualHookType<F>::Type>(function, context, pre, post);
+        auto hook = NewVirtualHook<typename VirtualHookType<F>::Type>(index, context, pre, post);
         hook->Add(instance);
         m_hooks.push_back(std::move(hook));
     }
 
-    template <class F, class Context, class Pre, class Post> void AddGlobal(F function, void** vtable, Context* context, Pre pre, Post post)
+    // As AddIndex, for every instance sharing vtable.
+    template <class F, class Context, class Pre, class Post>
+    void AddVTableIndex(int index, F function, void** vtable, Context* context, Pre pre, Post post)
     {
-        auto hook = std::make_unique<typename VirtualHookType<F>::Type>(function, context, pre, post);
-        hook->AddVTable(vtable);
-        m_hooks.push_back(std::move(hook));
+        AddVTable<typename VirtualHookType<F>::Type>(index, vtable, context, pre, post);
     }
 
+    // As AddVTableIndex, with the hooked method's signature spelled out.
     template <class C, class R, class... Args, class Context, class Pre, class Post>
     void AddGlobalIndex(int index, void** vtable, Context* context, Pre pre, Post post)
     {
-        if (index < 0) throw std::runtime_error("Invalid virtual hook index");
-        auto hook = std::make_unique<VirtualHook<C, R, Args...>>(static_cast<uint32_t>(index), context, pre, post);
-        hook->AddVTable(vtable);
-        m_hooks.push_back(std::move(hook));
+        AddVTable<VirtualHook<C, R, Args...>>(index, vtable, context, pre, post);
     }
 
     template <class R, class... Args>
@@ -120,6 +120,22 @@ class HookSet
     void Clear() { m_hooks.clear(); }
 
   private:
+    template <class Hook, class Context, class Pre, class Post>
+    static std::unique_ptr<Hook> NewVirtualHook(int index, Context* context, Pre pre, Post post)
+    {
+        if (index < 0) throw std::runtime_error("Invalid virtual hook slot index");
+        return std::make_unique<Hook>(static_cast<uint32_t>(index), context, pre, post);
+    }
+
+    template <class Hook, class Context, class Pre, class Post>
+    void AddVTable(int index, void** vtable, Context* context, Pre pre, Post post)
+    {
+        if (!vtable) throw std::runtime_error("Cannot hook a null vtable");
+        auto hook = NewVirtualHook<Hook>(index, context, pre, post);
+        hook->AddVTable(vtable);
+        m_hooks.push_back(std::move(hook));
+    }
+
     static std::vector<HookSet*>& All()
     {
         static std::vector<HookSet*> sets;

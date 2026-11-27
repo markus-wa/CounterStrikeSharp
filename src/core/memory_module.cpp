@@ -21,11 +21,19 @@
 
 #include "core/gameconfig.h"
 #include "core/memory.h"
+#include "core/signature.h"
 #include "dbg.h"
 #include "log.h"
 #include "metamod_oslink.h"
 
 namespace counterstrikesharp::modules {
+namespace {
+std::uint8_t* FindPatternInRange(std::uint8_t* data, std::size_t size, const std::vector<int16_t>& sigBytes)
+{
+    return const_cast<std::uint8_t*>(FindPattern(data, size, sigBytes));
+}
+} // namespace
+
 void Initialize()
 {
     if (!moduleList.empty()) return;
@@ -169,14 +177,17 @@ CModule::CModule(std::string_view path, std::uint64_t base)
 
             if (should_read_from_disk)
             {
-                if (auto bytes = GetOriginalBytes(disk_data, start - m_baseAddress, size))
+                auto bytes = GetOriginalBytes(disk_data, start - m_baseAddress, size);
+                if (bytes && SegmentCopyMatchesImage(bytes->data(), data, size))
                 {
                     CSSHARP_CORE_INFO("Copying bytes from disk for {}", m_pszPath);
-                    segment.bytes = bytes.value();
+                    segment.bytes = std::move(*bytes);
                     continue;
                 }
-                CSSHARP_CORE_ERROR("Cannot get original bytes for {}", m_pszPath);
-                return;
+                // Never scan a misaligned copy: signatures would resolve to the wrong address.
+                if (bytes) CSSHARP_CORE_ERROR("On-disk bytes for {} do not match the loaded image, scanning loaded bytes", m_pszPath);
+                else
+                    CSSHARP_CORE_ERROR("Cannot get original bytes for {}, scanning loaded bytes", m_pszPath);
             }
 
             segment.bytes.assign(&data[0], &data[size]);
@@ -346,14 +357,17 @@ CModule::CModule(std::string_view path, dl_phdr_info* info)
 
         if (should_read_from_disk)
         {
-            if (auto bytes = GetOriginalBytes(disk_data, address - m_baseAddress, size))
+            auto bytes = GetOriginalBytes(disk_data, info->dlpi_phdr[i].p_offset, size);
+            if (bytes && SegmentCopyMatchesImage(bytes->data(), data, size))
             {
                 CSSHARP_CORE_INFO("Copying bytes from disk for {}", m_pszPath);
-                segment.bytes = bytes.value();
+                segment.bytes = std::move(*bytes);
                 continue;
             }
-            CSSHARP_CORE_ERROR("Cannot get original bytes for {}", m_pszPath);
-            return;
+            // Never scan a misaligned copy: signatures would resolve to the wrong address.
+            if (bytes) CSSHARP_CORE_ERROR("On-disk bytes for {} do not match the loaded image, scanning loaded bytes", m_pszPath);
+            else
+                CSSHARP_CORE_ERROR("Cannot get original bytes for {}, scanning loaded bytes", m_pszPath);
         }
 
         segment.bytes.assign(&data[0], &data[size]);
@@ -450,6 +464,34 @@ void CModule::DumpSymbols(ElfW(Dyn) * dyn)
         return lastSymbol;
     };
 
+    m_dynamicTables.base = m_baseAddress;
+    for (auto* entry = dyn; entry->d_tag != DT_NULL; ++entry)
+    {
+        switch (entry->d_tag)
+        {
+            case DT_RELA:
+                m_dynamicTables.rela = reinterpret_cast<const void*>(entry->d_un.d_ptr);
+                break;
+            case DT_RELASZ:
+                m_dynamicTables.relaSize = entry->d_un.d_val;
+                break;
+            case DT_JMPREL:
+                m_dynamicTables.jmprel = reinterpret_cast<const void*>(entry->d_un.d_ptr);
+                break;
+            case DT_PLTRELSZ:
+                m_dynamicTables.jmprelSize = entry->d_un.d_val;
+                break;
+            case DT_SYMTAB:
+                m_dynamicTables.symbols = reinterpret_cast<const void*>(entry->d_un.d_ptr);
+                break;
+            case DT_STRTAB:
+                m_dynamicTables.strings = reinterpret_cast<const char*>(entry->d_un.d_ptr);
+                break;
+            default:
+                break;
+        }
+    }
+
     ElfW(Sym) * symbols{};
     ElfW(Word) * hash_ptr{};
 
@@ -507,13 +549,13 @@ void CModule::DumpSymbols(ElfW(Dyn) * dyn)
 std::optional<std::vector<std::uint8_t>>
 CModule::GetOriginalBytes(const std::vector<std::uint8_t>& disk_data, std::uintptr_t rva, std::size_t size)
 {
-    auto get_file_ptr_from_rva = [](std::uint8_t* data, std::uintptr_t address) -> std::optional<std::uintptr_t> {
+    auto get_file_offset_from_rva = [](const std::uint8_t* data, std::uintptr_t address) -> std::optional<std::uintptr_t> {
 #ifdef _WIN32
         // thank you praydog
         // https://github.com/cursey/kananlib/blob/b0323a0b005fc9e3944e0ea36dcc98eda4b84eea/src/Module.cpp#L176
 
-        const auto dos_header = reinterpret_cast<PIMAGE_DOS_HEADER>(data);
-        const auto nt_header = reinterpret_cast<PIMAGE_NT_HEADERS>(&data[dos_header->e_lfanew]);
+        const auto dos_header = reinterpret_cast<const IMAGE_DOS_HEADER*>(data);
+        const auto nt_header = reinterpret_cast<const IMAGE_NT_HEADERS*>(&data[dos_header->e_lfanew]);
         auto section = IMAGE_FIRST_SECTION(nt_header);
         for (auto i = 0; i < nt_header->FileHeader.NumberOfSections; i++, section++)
         {
@@ -525,25 +567,24 @@ CModule::GetOriginalBytes(const std::vector<std::uint8_t>& disk_data, std::uintp
 
             if (address >= section->VirtualAddress && address < static_cast<uintptr_t>(section->VirtualAddress) + section_size)
             {
-                const auto delta = section->VirtualAddress - section->PointerToRawData;
-
-                return reinterpret_cast<std::uintptr_t>(data + (address - delta));
+                return address - section->VirtualAddress + section->PointerToRawData;
             }
         }
         return std::nullopt;
 #else
-        // on linux you can just read from rva
-        return reinterpret_cast<std::uintptr_t>(data + address);
+        // On Linux the caller passes the segment's file offset (p_offset). It is not the RVA: in libserver.so the
+        // executable segment has p_offset 0x9e40fc but p_vaddr 0x9e50fc.
+        (void)data;
+        return address;
 #endif
     };
 
-    const auto disk_ptr = get_file_ptr_from_rva(const_cast<std::uint8_t*>(disk_data.data()), rva);
-    if (!disk_ptr) return std::nullopt;
+    const auto file_offset = get_file_offset_from_rva(disk_data.data(), rva);
+    // Compare offsets, never form a pointer outside the file.
+    if (!file_offset || *file_offset > disk_data.size() || size > disk_data.size() - *file_offset) return std::nullopt;
 
-    const auto disk_bytes = reinterpret_cast<std::uint8_t*>(*disk_ptr);
-    std::vector<std::uint8_t> result{ &disk_bytes[0], &disk_bytes[size] };
-
-    return result;
+    const auto begin = disk_data.begin() + static_cast<std::ptrdiff_t>(*file_offset);
+    return std::vector<std::uint8_t>(begin, begin + static_cast<std::ptrdiff_t>(size));
 }
 
 void* CModule::FindSignature(const char* signature)
@@ -553,17 +594,18 @@ void* CModule::FindSignature(const char* signature)
         return nullptr;
     }
 
+    // Reject invalid patterns before any scanner sees them, so they cannot match as garbage bytes.
+    auto pData = CGameConfig::HexToByte(signature);
+    if (pData.empty()) [[unlikely]]
+    {
+        CSSHARP_CORE_ERROR("Cannot convert signature \"{}\" to bytes", signature);
+        return nullptr;
+    }
+
     for (const auto& segment : m_vecSegments)
     {
         if (auto address = KHook::LookupSignature(reinterpret_cast<void*>(segment.address), segment.bytes.size(), signature))
             return address;
-    }
-
-    auto pData = CGameConfig::HexToByte(signature);
-    if (pData.empty()) [[unlikely]]
-    {
-        CSSHARP_CORE_ERROR("Cannot convert signture \"{}\" to bytes", signature);
-        return nullptr;
     }
 
     auto pOld = this->FindSignature(pData);
@@ -588,27 +630,10 @@ void* CModule::FindSignature(const std::vector<int16_t>& sigBytes)
 {
     for (auto&& segment : m_vecSegments)
     {
-        const auto size = segment.bytes.size();
         auto* data = segment.bytes.data();
-
-        auto first_byte = sigBytes[0];
-        std::uint8_t* end = data + size - sigBytes.size();
-
-        for (std::uint8_t* current = data; current <= end; ++current)
+        if (auto* match = FindPatternInRange(data, segment.bytes.size(), sigBytes))
         {
-            if (first_byte != -1) current = std::find(current, end, first_byte);
-
-            if (current == end)
-            {
-                break;
-            }
-
-            if (std::equal(sigBytes.begin() + 1, sigBytes.end(), current + 1, [](auto opt, auto byte) {
-                return opt == -1 || opt == byte;
-            }))
-            {
-                return reinterpret_cast<void*>(current - data + segment.address);
-            }
+            return reinterpret_cast<void*>(match - data + segment.address);
         }
     }
 
@@ -623,26 +648,9 @@ void* CModule::FindSignatureAlternative(const std::vector<int16_t>& sigBytes)
     }
 
     auto* data = reinterpret_cast<std::uint8_t*>(m_base);
-    const auto size = m_size;
-
-    auto first_byte = sigBytes[0];
-    std::uint8_t* end = data + size - sigBytes.size();
-
-    for (std::uint8_t* current = data; current <= end; ++current)
+    if (auto* match = FindPatternInRange(data, m_size, sigBytes))
     {
-        if (first_byte != -1) current = std::find(current, end, first_byte);
-
-        if (current == end)
-        {
-            break;
-        }
-
-        if (std::equal(sigBytes.begin() + 1, sigBytes.end(), current + 1, [](auto opt, auto byte) {
-            return opt == -1 || opt == byte;
-        }))
-        {
-            return reinterpret_cast<void*>(current - data + (std::uintptr_t)m_base);
-        }
+        return reinterpret_cast<void*>(match - data + (std::uintptr_t)m_base);
     }
 
     return nullptr;
@@ -775,56 +783,65 @@ void* CModule::FindVirtualTable(const std::string& name)
     Warning("Failed to find RTTI Complete Object Locator for %s\n", name.c_str());
     return nullptr;
 }
+
+const elf::RelocatedWords& CModule::Relocations()
+{
+    if (!m_relocations) m_relocations.emplace();
+    return *m_relocations;
+}
+
+rtti::VtableLookup CModule::LookupVirtualTable(const std::string& name)
+{
+    const auto address = reinterpret_cast<std::uintptr_t>(FindVirtualTable(name));
+    return { address, address != 0 ? 1u : 0u };
+}
 #endif
 
 #ifndef _WIN32
-void* CModule::FindVirtualTable(const std::string& name)
+const elf::RelocatedWords& CModule::Relocations()
 {
-    auto readOnlyData = GetSection(".rodata");
-    auto readOnlyRelocations = GetSection(".data.rel.ro");
+    if (!m_relocations)
+        m_relocations.emplace(m_dynamicTables, [](std::string_view name) {
+            return reinterpret_cast<std::uintptr_t>(dlsym(RTLD_DEFAULT, std::string(name).c_str()));
+        });
+    return *m_relocations;
+}
 
-    if (!readOnlyData || !readOnlyRelocations)
+rtti::VtableLookup CModule::LookupVirtualTable(const std::string& name)
+{
+    std::vector<rtti::MemoryRegion> names;
+    std::vector<rtti::MemoryRegion> data;
+    for (const auto& section : m_sections)
+    {
+        const rtti::MemoryRegion region{ static_cast<const std::uint8_t*>(section.m_pBase), section.m_iSize };
+        if (section.m_szName == ".rodata") names.push_back(region);
+        else if (section.m_szName == ".data.rel.ro" || section.m_szName == ".data.rel.ro.local")
+            data.push_back(region);
+    }
+
+    if (names.empty() || data.empty())
     {
         Warning("Failed to find .rodata or .data.rel.ro section\n");
+        return {};
+    }
+
+    return rtti::FindPrimaryVtable(name, names, data);
+}
+
+void* CModule::FindVirtualTable(const std::string& name)
+{
+    const auto lookup = LookupVirtualTable(name);
+    if (lookup.Ambiguous())
+    {
+        Warning("Ambiguous vtable for %s: %zu primary vtables match\n", name.c_str(), lookup.matchCount);
         return nullptr;
     }
-
-    std::string decoratedTableName = std::to_string(name.length()) + name;
-
-    SignatureIterator sigIt(readOnlyData->m_pBase, readOnlyData->m_iSize, (const byte*)decoratedTableName.c_str(),
-                            decoratedTableName.size() + 1);
-    void* classNameString = sigIt.FindNext(false);
-
-    if (!classNameString)
+    if (!lookup.Found())
     {
-        Warning("Failed to find type descriptor for %s\n", name.c_str());
+        Warning("Failed to find vtable for %s\n", name.c_str());
         return nullptr;
     }
-
-    SignatureIterator sigIt2(readOnlyRelocations->m_pBase, readOnlyRelocations->m_iSize, (const byte*)&classNameString, sizeof(void*));
-    void* typeName = sigIt2.FindNext(false);
-
-    if (!typeName)
-    {
-        Warning("Failed to find type name for %s\n", name.c_str());
-        return nullptr;
-    }
-
-    void* typeInfo = (void*)((uintptr_t)typeName - 0x8);
-
-    for (const auto& sectionName : { std::string_view(".data.rel.ro"), std::string_view(".data.rel.ro.local") })
-    {
-        auto section = GetSection(sectionName);
-        if (!section) continue;
-
-        SignatureIterator sigIt3(section->m_pBase, section->m_iSize, (const byte*)&typeInfo, sizeof(void*));
-
-        while (void* vtable = sigIt3.FindNext(false))
-            if (*(int64_t*)((uintptr_t)vtable - 0x8) == 0) return (void*)((uintptr_t)vtable + 0x8);
-    }
-
-    Warning("Failed to find vtable for %s\n", name.c_str());
-    return nullptr;
+    return reinterpret_cast<void*>(lookup.address);
 }
 #endif
 

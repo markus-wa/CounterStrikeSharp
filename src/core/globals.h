@@ -86,6 +86,7 @@ extern IPhysicsSurfaceProps* physicsSurfaceProps;
 extern IMDLCache* modelCache;
 extern IVoiceServer* voiceServer;
 extern CDotNetManager dotnetManager;
+// The engine's ICvar, for hooks. Calls go through g_pCVar, the verified ICvar (core/verified_cvar.h).
 extern ICvar* cvars;
 extern ISource2Server* server;
 extern CGlobalEntityList* globalEntityList;
@@ -127,6 +128,8 @@ inline NetworkStateChanged_t* NetworkStateChanged = nullptr;
 extern std::thread::id gameThreadId;
 
 void Initialize();
+// Takes the core functions from the Resolution Report and installs the init hooks; call after ResolveCoreBindings.
+void InitializeHooks();
 void ShutdownHooks();
 // Should only be called within the active game loop (i e map should be loaded
 // and active) otherwise that'll be nullptr!

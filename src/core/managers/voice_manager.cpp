@@ -20,7 +20,10 @@
 #include <engine2/ivengineserver2.h>
 #include <schema.h>
 
+#include "core/core_bindings.h"
 #include "core/managers/player_manager.h"
+#include "core/slot_binding_keys.h"
+#include "core/slot_hooks.h"
 #include "scripting/callback_manager.h"
 
 namespace counterstrikesharp {
@@ -31,7 +34,11 @@ VoiceManager::~VoiceManager() {}
 
 void VoiceManager::OnAllInitialized()
 {
-    m_hooks.Add(&IVEngineServer2::SetClientListening, globals::engine, this, &VoiceManager::SetClientListening, nullptr);
+    // By the slot index the boot Vtable Check verified. Disabled set-listening: voice flags and listen overrides
+    // cannot be set (their natives throw); the engine decides who hears whom.
+    if (bindings::ShouldRegisterHooks(bindings::features::PlayerSetListening, "SetClientListening hook"))
+        HookSlot(m_hooks, SlotMethod{ bindings::slots::IVEngineServer2_SetClientListening, &IVEngineServer2::SetClientListening },
+                 globals::engine, this, &VoiceManager::SetClientListening, nullptr);
 }
 
 void VoiceManager::OnShutdown() { m_hooks.Clear(); }
@@ -78,18 +85,17 @@ KHook::Return<bool> VoiceManager::SetClientListening(IVEngineServer2* hookThis, 
 
         if ((senderFlags & Speak_Team) || (receiverFlags & Speak_ListenTeam))
         {
-            static auto classKey = hash_32_fnv1a_const("CBaseEntity");
-            static auto memberKey = hash_32_fnv1a_const("m_iTeamNum");
-            const static auto m_key = schema::GetOffset("CBaseEntity", classKey, "m_iTeamNum", memberKey);
+            // Missing from the schema (logged once): team voice flags are not applied.
+            static const auto teamNum = schema::FindField("CBaseEntity", "m_iTeamNum");
 
             auto receiverController = globals::entitySystem->GetEntityInstance(CEntityIndex(iReceiver.Get() + 1));
             auto senderController = globals::entitySystem->GetEntityInstance(CEntityIndex(iSender.Get() + 1));
 
-            if (receiverController && senderController)
+            if (teamNum && receiverController && senderController)
             {
-                auto receiverTeam = *reinterpret_cast<std::add_pointer_t<unsigned int>>((uintptr_t)(receiverController) + m_key.offset);
+                auto receiverTeam = *reinterpret_cast<std::add_pointer_t<unsigned int>>((uintptr_t)(receiverController) + teamNum->offset);
 
-                auto senderTeam = *reinterpret_cast<std::add_pointer_t<unsigned int>>((uintptr_t)(senderController) + m_key.offset);
+                auto senderTeam = *reinterpret_cast<std::add_pointer_t<unsigned int>>((uintptr_t)(senderController) + teamNum->offset);
 
                 return KHook::Recall(&IVEngineServer2::SetClientListening, KHook::Return<bool>{ KHook::Action::Ignore, bListen }, hookThis,
                                      iReceiver, iSender, receiverTeam == senderTeam);

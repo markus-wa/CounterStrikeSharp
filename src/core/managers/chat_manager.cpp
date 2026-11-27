@@ -20,6 +20,7 @@
 #include <engine2/ivengineserver2.h>
 
 #include "tier0/tier0_strtools.h"
+#include "core/core_bindings.h"
 #include "core/coreconfig.h"
 #include "core/gameconfig.h"
 #include "core/log.h"
@@ -36,17 +37,13 @@ ChatManager::~ChatManager() {}
 
 void ChatManager::OnAllInitialized()
 {
-    m_pHostSay = reinterpret_cast<HostSay>(modules::server->FindSignature(globals::gameConfig->GetSignature("Host_Say")));
-
-    if (m_pHostSay == nullptr)
-    {
-        CSSHARP_CORE_ERROR("Failed to find signature for \'Host_Say\'");
-        return;
-    }
-
-    m_hooks.AddFunction(reinterpret_cast<void*>(m_pHostSay), &DetourHostSay);
-
+    // Created even when chat hooks are disabled, so listeners still register (and never fire).
     on_player_chat_callback = globals::callbackManager.CreateCallback("OnPlayerChat");
+
+    if (!bindings::ShouldRegisterHooks(bindings::features::ChatSayHooks, "chat hooks")) return;
+
+    m_pHostSay = reinterpret_cast<HostSay>(bindings::GetBindingAddress("Host_Say"));
+    m_hooks.AddFunction(reinterpret_cast<void*>(m_pHostSay), &DetourHostSay);
 }
 
 void ChatManager::OnShutdown()
@@ -66,7 +63,8 @@ KHook::Return<void> DetourHostSay(CEntityInstance* pController, CCommand& args, 
         KHook::Recall(m_pHostSay, KHook::Return<void>{ KHook::Action::Ignore }, pController, args, teamonly, unk1, unk2);
     }
 
-    if (bCommand)
+    // Chat triggers run commands registered with AddCommand; tokenizing and finding them goes through ICvar.
+    if (bCommand && bindings::IsEngineFeatureAvailable(bindings::features::AddCommand))
     {
         char* pszMessage = (char*)(args.ArgS() + prefix.length() + 1);
 
@@ -101,7 +99,7 @@ KHook::Return<void> DetourHostSay(CEntityInstance* pController, CCommand& args, 
             callback->Execute();
         }
 
-        auto pEvent = globals::gameEventManager->CreateEvent("player_chat", true);
+        auto pEvent = globals::gameEventManager ? globals::gameEventManager->CreateEvent("player_chat", true) : nullptr;
         if (pEvent)
         {
             pEvent->SetBool("teamonly", teamonly);

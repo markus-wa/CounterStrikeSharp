@@ -1,4 +1,6 @@
 #include "core/cs2_sdk/schema.h"
+#include "core/core_bindings.h"
+#include "core/slot_binding_keys.h"
 #include "core/gameconfig.h"
 #include "core/globals.h"
 #include "entity2/variant.h"
@@ -187,8 +189,11 @@ class CBaseEntity : public CEntityInstance
   public:
     bool IsPawn()
     {
-        static int offset = counterstrikesharp::globals::gameConfig->GetOffset("CBaseEntity_IsPlayerPawn");
-        return CALL_VIRTUAL(bool, offset, this);
+        // The verified (or healed) slot index from the Resolution Report. False while the Slot Binding failed: never
+        // calls through an index that does not hold IsPlayerPawn.
+        const auto offset = counterstrikesharp::bindings::GetBindingSlot(counterstrikesharp::bindings::slots::CBaseEntity_IsPlayerPawn);
+        if (!offset) return false;
+        return CALL_VIRTUAL(bool, static_cast<int>(*offset), this);
     }
 };
 

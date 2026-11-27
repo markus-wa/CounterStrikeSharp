@@ -19,7 +19,7 @@
 
 #include "core/log.h"
 #include "core/globals.h"
-#include "core/gameconfig.h"
+#include "core/core_bindings.h"
 #include "core/game_system.h"
 #include "core/managers/server_manager.h"
 #include "core/managers/player_manager.h"
@@ -36,15 +36,17 @@ IEntityResourceManifest* m_exportResourceManifest = nullptr;
 // This mess is needed to get the pointer to sm_pFirst so we can insert game systems
 bool InitGameSystems()
 {
+    namespace bindings = counterstrikesharp::bindings;
+    if (!bindings::ShouldRegisterHooks(bindings::features::ServerGameSystemEvents,
+                                       "the game system (precache, server pre/post entity think, player buttons)"))
+        return false;
+
     // This signature directly points to the instruction referencing sm_pFirst, and the opcode is 3
     // bytes so we skip those
-    uint8* ptr = (uint8*)counterstrikesharp::globals::gameConfig->ResolveSignature("IGameSystem_InitAllSystems_pFirst") + 3;
+    void* pFirstRef = bindings::GetBindingAddress("IGameSystem_InitAllSystems_pFirst");
+    if (!pFirstRef) return false;
 
-    if (!ptr)
-    {
-        CSSHARP_CORE_ERROR("Failed to InitGameSystems, see warnings above.");
-        return false;
-    }
+    uint8* ptr = (uint8*)pFirstRef + 3;
 
     // Grab the offset as 4 bytes
     uint32 offset = *(uint32*)ptr;

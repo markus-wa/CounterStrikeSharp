@@ -15,11 +15,13 @@
  */
 
 #include "core/managers/entity_manager.h"
+#include "core/core_bindings.h"
 #include "core/function.h"
 #include "core/gameconfig.h"
 #include "core/globals.h"
 #include "core/log.h"
 #include "core/recipientfilters.h"
+#include "core/slot_binding_keys.h"
 #include "core/cs2_sdk/entity/dump.h"
 
 #include <vector>
@@ -46,11 +48,15 @@ CCheckTransmitInfoList::CCheckTransmitInfoList(CCheckTransmitInfoHack** pInfoInf
 
 void EntityManager::OnAllInitialized()
 {
-    m_hooks.AddGlobalIndex<ISource2GameEntities, void, CCheckTransmitInfoHack**, uint32_t, CBitVec<16384>&, CBitVec<16384>&,
-                           const Entity2Networkable_t**, const uint16*, uint32_t>(
-        globals::gameConfig->GetOffset("ISource2GameEntities::CheckTransmit"), *(void***)globals::gameEntities, this, nullptr,
-        &EntityManager::CheckTransmit);
+    // Created even when the CheckTransmit hook is disabled, so listeners still register (and never fire).
     check_transmit = globals::callbackManager.CreateCallback("CheckTransmit");
+    if (bindings::ShouldRegisterHooks(bindings::features::CheckTransmit, "CheckTransmit hook"))
+    {
+        m_hooks.AddGlobalIndex<ISource2GameEntities, void, CCheckTransmitInfoHack**, uint32_t, CBitVec<16384>&, CBitVec<16384>&,
+                               const Entity2Networkable_t**, const uint16*, uint32_t>(
+            *bindings::GetBindingSlot(bindings::slots::CheckTransmit), *(void***)globals::gameEntities, this, nullptr,
+            &EntityManager::CheckTransmit);
+    }
     on_entity_spawned_callback = globals::callbackManager.CreateCallback("OnEntitySpawned");
     on_entity_created_callback = globals::callbackManager.CreateCallback("OnEntityCreated");
     on_entity_deleted_callback = globals::callbackManager.CreateCallback("OnEntityDeleted");
@@ -60,61 +66,32 @@ void EntityManager::OnAllInitialized()
     on_player_take_damage_pre_callback = globals::callbackManager.CreateCallback("OnPlayerTakeDamagePre");
     on_player_take_damage_post_callback = globals::callbackManager.CreateCallback("OnPlayerTakeDamagePost");
 
-    m_pFireOutputInternal = reinterpret_cast<FireOutputInternal>(
-        modules::server->FindSignature(globals::gameConfig->GetSignature("CEntityIOOutput_FireOutputInternal")));
+    // Each of these Engine Features is resolved on its own: a failed Binding leaves only its function null (the natives
+    // calling it then fail with an error) and is named in the boot Resolution Report.
+    CEntityInstance_AcceptInput =
+        reinterpret_cast<decltype(CEntityInstance_AcceptInput)>(bindings::GetBindingAddress("CEntityInstance_AcceptInput"));
+    CEntitySystem_AddEntityIOEvent =
+        reinterpret_cast<decltype(CEntitySystem_AddEntityIOEvent)>(bindings::GetBindingAddress("CEntitySystem_AddEntityIOEvent"));
+    CBaseEntity_EmitSoundFilter =
+        reinterpret_cast<decltype(CBaseEntity_EmitSoundFilter)>(bindings::GetBindingAddress("CBaseEntity_EmitSoundFilter"));
+    CBaseEntity_DispatchSpawn =
+        reinterpret_cast<decltype(CBaseEntity_DispatchSpawn)>(bindings::GetBindingAddress("CBaseEntity_DispatchSpawn"));
 
-    if (m_pFireOutputInternal == nullptr)
+    if (bindings::ShouldRegisterHooks(bindings::features::EntityOutputHooks, "entity output hooks"))
     {
-        CSSHARP_CORE_CRITICAL("Failed to find signature for \'CEntityIOOutput_FireOutputInternal\'");
-        return;
+        m_pFireOutputInternal = reinterpret_cast<FireOutputInternal>(bindings::GetBindingAddress("CEntityIOOutput_FireOutputInternal"));
+        m_hooks.AddFunction(reinterpret_cast<void*>(m_pFireOutputInternal), &DetourFireOutputInternal);
     }
 
-    CEntityInstance_AcceptInput = decltype(CEntityInstance_AcceptInput)(
-        modules::server->FindSignature(globals::gameConfig->GetSignature("CEntityInstance_AcceptInput")));
-
-    if (!CEntityInstance_AcceptInput)
+    // Take-damage listeners stay registrable when disabled; they just never fire (the detour is added in AllPluginsLoaded).
+    if (bindings::ShouldRegisterHooks(bindings::features::EntityTakeDamageHooks, "take damage hooks"))
     {
-        CSSHARP_CORE_CRITICAL("Failed to find signature for \'CEntityInstance_AcceptInput\'");
+        CBaseEntity_TakeDamageOld =
+            reinterpret_cast<decltype(CBaseEntity_TakeDamageOld)>(bindings::GetBindingAddress("CBaseEntity_TakeDamageOld"));
+        Func_OnTakeDamage =
+            new ValveFunction((void*)CBaseEntity_TakeDamageOld, CALL_CONV,
+                              std::vector<DataType_t>{ DATA_TYPE_POINTER, DATA_TYPE_POINTER, DATA_TYPE_POINTER }, DATA_TYPE_LONG_LONG);
     }
-
-    CEntitySystem_AddEntityIOEvent = decltype(CEntitySystem_AddEntityIOEvent)(
-        modules::server->FindSignature(globals::gameConfig->GetSignature("CEntitySystem_AddEntityIOEvent")));
-
-    if (!CEntitySystem_AddEntityIOEvent)
-    {
-        CSSHARP_CORE_CRITICAL("Failed to find signature for \'CEntitySystem_AddEntityIOEvent\'");
-    }
-
-    CBaseEntity_EmitSoundFilter = decltype(CBaseEntity_EmitSoundFilter)(
-        modules::server->FindSignature(globals::gameConfig->GetSignature("CBaseEntity_EmitSoundFilter")));
-
-    if (!CBaseEntity_EmitSoundFilter)
-    {
-        CSSHARP_CORE_CRITICAL("Failed to find signature for \'CBaseEntity_EmitSoundFilter\'");
-    }
-
-    CBaseEntity_DispatchSpawn = (decltype(CBaseEntity_DispatchSpawn))((
-        modules::server->FindSignature(globals::gameConfig->GetSignature("CBaseEntity_DispatchSpawn"))));
-
-    if (!CBaseEntity_DispatchSpawn)
-    {
-        CSSHARP_CORE_CRITICAL("Failed to find signature for \'CBaseEntity_DispatchSpawn\'");
-        return;
-    }
-
-    CBaseEntity_TakeDamageOld = (decltype(CBaseEntity_TakeDamageOld))((
-        modules::server->FindSignature(globals::gameConfig->GetSignature("CBaseEntity_TakeDamageOld"))));
-    if (!CBaseEntity_TakeDamageOld)
-    {
-        CSSHARP_CORE_CRITICAL("Failed to find signature for \'CBaseEntity_TakeDamageOld\'");
-        return;
-    }
-
-    Func_OnTakeDamage =
-        new ValveFunction((void*)CBaseEntity_TakeDamageOld, CALL_CONV,
-                          std::vector<DataType_t>{ DATA_TYPE_POINTER, DATA_TYPE_POINTER, DATA_TYPE_POINTER }, DATA_TYPE_LONG_LONG);
-
-    m_hooks.AddFunction(reinterpret_cast<void*>(m_pFireOutputInternal), &DetourFireOutputInternal);
 
     // Listener is added in ServerStartup as entity system is not initialised at this stage.
 }
@@ -446,12 +423,8 @@ KHook::Return<void> DetourFireOutputInternal(CEntityIOOutput* const pThis,
 
 SndOpEventGuid_t EntityEmitSoundFilter(CRecipientFilter& filter, uint32 ent, const char* pszSound, float flVolume, float flPitch)
 {
-    if (!CBaseEntity_EmitSoundFilter)
-    {
-        CSSHARP_CORE_ERROR("[EntityManager][EmitSoundFilter] - Failed to emit a sound. Signature for \'CBaseEntity_EmitSoundFilter\' is "
-                           "not found. The latest update may have broken it.");
-        return SndOpEventGuid_t{};
-    }
+    // Null while cssharp.entity/emit-sound is disabled (reported at boot; the EMIT_SOUND_FILTER native throws instead).
+    if (!CBaseEntity_EmitSoundFilter) return SndOpEventGuid_t{};
 
     EmitSound_t params;
     params.m_pSoundName = pszSound;

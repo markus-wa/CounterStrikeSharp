@@ -11,6 +11,7 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 add_subdirectory(libraries/spdlog)
 add_subdirectory(libraries/dyncall)
+add_subdirectory(libraries/zydis)
 
 
 include("makefiles/protobuf.cmake")
@@ -69,6 +70,30 @@ set(SOURCE_FILES
     src/scripting/natives/natives_convars.cpp
     src/core/memory_module.h
     src/core/memory_module.cpp
+    src/core/signature.h
+    src/core/signature.cpp
+    src/core/rtti_vtable.h
+    src/core/rtti_vtable.cpp
+    src/core/vtable_fingerprint.h
+    src/core/vtable_fingerprint.cpp
+    src/core/slot_hooks.h
+    src/core/slot_calls.h
+    src/core/engine_server_calls.h
+    src/core/engine_server_calls.cpp
+    src/scripting/engine_feature_natives.h
+    src/core/elf_relocations.h
+    src/core/elf_relocations.cpp
+    src/core/binding_resolver.h
+    src/core/binding_resolver.cpp
+    src/core/engine_features.h
+    src/core/engine_features.cpp
+    src/core/core_bindings.h
+    src/core/core_bindings.cpp
+    src/core/slot_calls.h
+    src/core/verified_cvar.h
+    src/core/verified_cvar.cpp
+    src/core/compiled_slots.h
+    src/core/compiled_slots.cpp
     src/core/cs2_sdk/interfaces/cgameresourceserviceserver.h
     src/core/cs2_sdk/interfaces/cs2_interfaces.h
     src/core/cs2_sdk/interfaces/cs2_interfaces.cpp
@@ -109,6 +134,7 @@ set(SOURCE_FILES
     src/core/customhudlayout.cpp
     src/core/customhudlayout.h
     src/scripting/natives/natives_customhud.cpp
+    src/scripting/natives/natives_bindings.cpp
 )
 
 add_library(${PROJECT_NAME} SHARED ${SOURCE_FILES} ${NATIVES_SOURCES} ${CONVERSIONS_SOURCES} ${CONVERSIONS_HEADERS})
@@ -135,10 +161,16 @@ elseif(WIN32)
 endif()
 
 # Libraries
-target_link_libraries(${PROJECT_NAME} ${COUNTER_STRIKE_SHARP_LINK_LIBRARIES} Protobufs)
+target_link_libraries(${PROJECT_NAME} ${COUNTER_STRIKE_SHARP_LINK_LIBRARIES} Protobufs zydis)
 
 add_custom_command(
     TARGET ${PROJECT_NAME} PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/configs ${CMAKE_BINARY_DIR}
 )
+
+option(COUNTERSTRIKESHARP_BUILD_TESTS "Build the native unit tests in tests/native" OFF)
+if(COUNTERSTRIKESHARP_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests/native)
+endif()

@@ -195,9 +195,15 @@ class ResolutionReport
 {
   public:
     ResolutionReport() = default;
-    ResolutionReport(std::string buildId, std::vector<BindingResult> bindings, std::vector<EngineFeatureKill> killSwitches = {});
+    ResolutionReport(std::string buildId,
+                     std::vector<BindingResult> bindings,
+                     bool healEnabled = true,
+                     std::vector<EngineFeatureKill> killSwitches = {});
 
     [[nodiscard]] const std::string& BuildId() const { return m_buildId; }
+    // False when the operator turned Heal off: Slot Bindings were only checked at their Gamedata index. Always true on
+    // Windows, which has no Vtable Check and so no Heal to turn off.
+    [[nodiscard]] bool HealEnabled() const { return m_healEnabled; }
     [[nodiscard]] const std::vector<BindingResult>& Bindings() const { return m_bindings; }
     // By key, through an index built with the report (no scan): native code reads Bindings by key on hot paths.
     [[nodiscard]] const BindingResult* Find(std::string_view key) const;
@@ -207,6 +213,7 @@ class ResolutionReport
   private:
     std::string m_buildId;
     std::vector<BindingResult> m_bindings;
+    bool m_healEnabled = true;
     std::vector<EngineFeatureKill> m_killSwitches;
     std::map<std::string, std::size_t, std::less<>> m_index; // key -> position in m_bindings
 };
@@ -236,10 +243,17 @@ class IBindingResolver
 // bodies) or AmbiguousHeal (several). A size change of the vtable alone is a warning. On Windows, or without a window
 // in Gamedata, it is unverified. A Slot Binding declared with a compiledIndex that resolves or heals at another index
 // fails with CompiledSlotMoved (its evidence kept). Healed indices live only in the report; Gamedata is never written.
+// With Heal off (the operator's HealEnabled: false), a window that does not match at the Gamedata index fails with
+// FingerprintMismatch; nothing is searched. No effect on Windows, which has no Vtable Check.
+struct ResolverOptions
+{
+    bool heal = true;
+};
+
 class BuiltinResolver final : public IBindingResolver
 {
   public:
-    explicit BuiltinResolver(Platform platform) : m_platform(platform) {}
+    explicit BuiltinResolver(Platform platform, ResolverOptions options = {}) : m_platform(platform), m_options(options) {}
 
     [[nodiscard]] ResolutionReport Resolve(std::string buildId,
                                            const Gamedata& gamedata,
@@ -248,6 +262,7 @@ class BuiltinResolver final : public IBindingResolver
 
   private:
     Platform m_platform;
+    ResolverOptions m_options;
 };
 
 // Shorthand for BuiltinResolver(Platform::Linux).Resolve(...).
@@ -308,6 +323,7 @@ std::string DescribeUnavailable(const ResolutionReport& report, const EngineFeat
 // "Bindings for build 1.42.0.1/2000950: all 12 resolved"
 // "Bindings for build 1.42.0.1/2000950: all 12 resolved, 1 unverified"
 // "Bindings for build 1.42.0.1/2000950: all 12 resolved, 1 healed" (healed Bindings count as resolved)
+// "Bindings for build 1.42.0.1/2000950: 1 of 12 failed: ISource2Server::GameFrame (fingerprint mismatch); healing off"
 std::string FormatBindingSummary(const ResolutionReport& report);
 
 // One line per healed Slot Binding, with its evidence (managed's startup report uses the same wording), e.g.
@@ -322,7 +338,7 @@ std::vector<std::string> FormatVtableSizeWarnings(const ResolutionReport& report
 // --- Native -> managed boundary ---
 
 // The report as one JSON document for managed (the GET_RESOLUTION_REPORT native):
-// { "buildId": "...",
+// { "buildId": "...", "healEnabled": true|false,
 //   "bindings": [ { "key", "kind": "Signature"|"Offset"|"RttiVtable"|"SchemaField"|"Slot", "resolved",
 //                   "status": "Resolved"|"Failed"|"Unverified"|"Healed", "reason": <FailureReason name>,
 //                   "matchCount", "address", "offset", "library",

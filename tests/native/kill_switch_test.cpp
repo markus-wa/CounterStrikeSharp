@@ -102,7 +102,7 @@ TEST_CASE("disabledEngineFeatures is read as Kill Switches, not as a Binding")
 TEST_CASE("A feature-level Kill Switch disables only that Engine Feature, with its reason")
 {
     const ResolutionReport report("b", { Resolved("Host_Say"), Resolved("IGameSystem_InitAllSystems_pFirst") },
-                                  { { "cssharp.server/game-system-events", "crashes on map change" } });
+                                  true, { { "cssharp.server/game-system-events", "crashes on map change" } });
 
     const auto killed = EvaluateEngineFeature(report, kGameSystem);
     CHECK_FALSE(killed.available);
@@ -128,7 +128,7 @@ TEST_CASE("Forcing on re-enables a killed Engine Feature, never one whose Bindin
 
     const ResolutionReport report("b",
                                   { Failed("Host_Say", FailureReason::DisabledByGamedata), Resolved("IGameSystem_InitAllSystems_pFirst") },
-                                  kills);
+                                  true, kills);
 
     CHECK(EvaluateEngineFeature(report, kGameSystem).available);
     CHECK(DescribeUnavailable(report, kGameSystem) == "Engine Feature cssharp.server/game-system-events is available");
@@ -156,7 +156,7 @@ TEST_CASE("Every forced Engine Feature warns, and so does a force that names no 
 
 TEST_CASE("Kill Switches cross to managed with the report")
 {
-    const ResolutionReport report("b", {}, { { "cssharp.server/game-system-events", "crashes", true } });
+    const ResolutionReport report("b", {}, true, { { "cssharp.server/game-system-events", "crashes", true } });
 
     const auto json = nlohmann::json::parse(ResolutionReportToJson(report, {}));
 

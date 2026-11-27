@@ -312,7 +312,16 @@ std::vector<std::string> FormatVtableSizeWarnings(const ResolutionReport& report
 // Enum values travel by name (the C++ enumerator names), so managed never depends on their numeric values.
 std::string ResolutionReportToJson(const ResolutionReport& report, std::span<const EngineFeatureDeclaration> nativeFeatures);
 
-// Build id from the game's steam.inf ("PatchVersion/ServerVersion"), or "unknown".
-std::string ParseBuildId(std::string_view steamInf);
+// The CS2 build as the game's steam.inf names it. A field steam.inf lacks (or a missing steam.inf) is "unknown".
+struct BuildIdentity
+{
+    std::string patchVersion; // "PatchVersion", e.g. "1.42.0.1": the human label
+    std::string sourceRevision; // "SourceRevision", e.g. "11268945": the key Gamedata Snapshots are published under
+
+    // The Resolution Report's build id, e.g. "1.42.0.1 (SourceRevision 11268945)".
+    [[nodiscard]] std::string Label() const;
+};
+
+BuildIdentity ParseBuildIdentity(std::string_view steamInf);
 
 } // namespace counterstrikesharp::bindings

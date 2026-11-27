@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# End-to-end cases for the Gamedata Feed (ADR-0006), against a local feed signed with the built-in test key
-# (eng/gamedata-feed/sign_feed.py) and served by python's http.server.
+# End-to-end cases for the Gamedata Feed (ADR-0006), against a local feed signed with the built-in test key by the data
+# repo's publisher and served by python's http.server.
 #
 #   eng/e2e/cases/gamedata-feed.sh [run.sh options...]     e.g. --no-build
+#   CSS_E2E_GAMEDATA_REPO   the cssharp-gamedata checkout (publisher/publish.py, publisher/test-key.pem);
+#                           default ~/dev/markus-wa/cssharp-gamedata
 #
 # off:        GamedataFeedEnabled false with the feed URL set: boots on bundled and the feed sees no request.
 # exact:      the feed lists a snapshot for the server's build (the bundled Gamedata plus a marker entry): native boots
@@ -21,16 +23,23 @@ revision=$(sed -n 's/^SourceRevision=//p' "$steam_inf" | tr -d '\r')
 patch=$(sed -n 's/^PatchVersion=//p' "$steam_inf" | tr -d '\r')
 [ -n "$revision" ] && [ -n "$patch" ] || { echo "gamedata-feed: no SourceRevision/PatchVersion in $steam_inf"; exit 1; }
 port=${CSS_E2E_FEED_PORT:-28765} # outside the harness's game port range (27400-27800)
+gamedata_repo=${CSS_E2E_GAMEDATA_REPO:-$HOME/dev/markus-wa/cssharp-gamedata}
+[ -f "$gamedata_repo/publisher/publish.py" ] ||
+    { echo "gamedata-feed: no publisher in $gamedata_repo (set CSS_E2E_GAMEDATA_REPO to the cssharp-gamedata checkout)"; exit 1; }
 
 work=$(mktemp -d)
 httpd=
 trap '[ -n "$httpd" ] && kill "$httpd" 2>/dev/null; rm -rf "$work"' EXIT
 
+# A one-build data repo: this build's Linux snapshot is the bundled Gamedata plus a marker entry.
+snapshots=$work/data/snapshots/$revision
+mkdir -p "$snapshots"
+jq -n --arg patch "$patch" '{patchVersion: $patch}' >"$snapshots/build.json"
 jq '. + {"E2EFeedMarker": {"offsets": {"linux": 1, "windows": 1}}}' \
-    "$repo/configs/addons/counterstrikesharp/gamedata/gamedata.json" >"$work/snapshot.json" || exit 1
-entries=$(jq '[.[] | objects] | length' "$work/snapshot.json")
-python3 -I "$repo/eng/gamedata-feed/sign_feed.py" sign --key "$repo/eng/gamedata-feed/test-key.pem" --seq 1 \
-    --out "$work/feed" "$revision:$patch:linux:$work/snapshot.json" || exit 1
+    "$repo/configs/addons/counterstrikesharp/gamedata/gamedata.json" >"$snapshots/linux.json" || exit 1
+entries=$(jq '[.[] | objects] | length' "$snapshots/linux.json")
+python3 -I "$gamedata_repo/publisher/publish.py" publish --key "$gamedata_repo/publisher/test-key.pem" \
+    --out "$work/feed" "$work/data" || exit 1 # first publish: seq 1
 cp -r "$work/feed" "$work/tampered"
 python3 -I -c 'import sys; p = sys.argv[1]; b = bytearray(open(p, "rb").read()); b[len(b) // 2] ^= 1; open(p, "wb").write(b)' \
     "$work/tampered/index.json"

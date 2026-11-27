@@ -44,9 +44,14 @@ cp -r "$work/feed" "$work/tampered"
 python3 -I -c 'import sys; p = sys.argv[1]; b = bytearray(open(p, "rb").read()); b[len(b) // 2] ^= 1; open(p, "wb").write(b)' \
     "$work/tampered/index.json"
 
-python3 -I -m http.server --bind 127.0.0.1 --directory "$work" "$port" 2>"$work/httpd.log" &
+python3 -I -u -m http.server --bind 127.0.0.1 --directory "$work" "$port" >"$work/httpd.out" 2>"$work/httpd.log" &
 httpd=$!
-for _ in $(seq 50); do (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null && break; sleep 0.1; done
+# Wait for this server, not just the port: a port taken by another run (e.g. a concurrent agent's) would serve its feed.
+until grep -q '^Serving HTTP' "$work/httpd.out"; do
+    kill -0 "$httpd" 2>/dev/null ||
+        { echo "gamedata-feed: feed server failed on port $port (set CSS_E2E_FEED_PORT):"; cat "$work/httpd.log"; exit 1; }
+    sleep 0.1
+done
 
 feed() { echo ".GamedataFeedEnabled = $1 | .GamedataFeedUrl = \"$2\""; }
 status=0

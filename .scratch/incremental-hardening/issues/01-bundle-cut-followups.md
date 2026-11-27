@@ -18,7 +18,7 @@ Source: a deep dive into which options A–K cut PGL's emergency bundles fastest
    - OnMapStart is not involved. It comes from the StartupServer hook (`src/mm_plugin.cpp:177,218-232`), which B already heals.
 3. **H: plugin gamedata in the feed.** Not ticketed, and out of scope in spec C. It needs a separate trust root for plugin keys, because under ADR-0006 operator keys replace the built-in keys. For PGL the cheaper route is dropping the `ConnectClient` hook in the plugin. Likely wontfix here.
 4. **J: Correct the backtest artifact:**
-   - G is misattributed: map start doesn't come from `IGameSystem`. Credit #21/#24/#28/#29 to item 2 or C's Kill Switch, and re-run the "11 of 16 blocked by map start" paragraph and card F4.
+   - G is misattributed: map start doesn't come from `IGameSystem`. Credit #21/#24/#28/#29 to item 2 or C's Kill Switch, and re-run the "11 of 16 blocked by map start" paragraph and the "bug 4" card (formerly F4).
    - #14 is not gamedata-only. `cdd2a827` changed `getGlobalVars` in native code, so D is −1, A–E leaves about 12, and core is 7.
    - #37 belongs to B, not C (IVEngineServer2 +1 slot).
    - H (#38) needs C's Kill Switch, not just A1/A3, plus plugin catches.

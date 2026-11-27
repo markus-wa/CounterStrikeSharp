@@ -9,7 +9,7 @@ Planning workspace for making CounterStrikeSharp survive CS2 game updates with f
 
 ## Letter registry (canonical, 2026-11-27)
 
-Single capital letters name **workstreams** only, and only as listed here. Every doc, artifact, note and ticket uses these; nothing else gets a bare single letter. New work takes the next free letter (skip I and T, which prefix I1–I7 and T1/T2).
+Single capital letters name **workstreams** only, and only as listed here. Every doc, artifact, note and ticket uses these; nothing else gets a bare single letter. New work takes the next free letter (skip I, T and Q, reserved as prefixes: I1–I7 items, T1/T2 tiers, Q1… question lists). R is retired (the old "worth investigating" R1–R5 map to G, H, B on Windows, B remaining calls, C3 ownership).
 
 | Letter | Workstream | Where |
 |---|---|---|

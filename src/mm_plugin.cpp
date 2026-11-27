@@ -145,7 +145,6 @@ bool CounterStrikeSharpMMPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, s
 
         CSSHARP_CORE_INFO("CoreConfig loaded.");
 
-        // The Gamedata Feed's snapshot for this build, or the bundled file (logs which, and why).
         std::string gamedata_error;
         if (!LoadCoreGamedata(gamedata_error))
         {
@@ -168,7 +167,6 @@ bool CounterStrikeSharpMMPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, s
         on_activate_callback = globals::callbackManager.CreateCallback("OnMapStart");
         on_map_end_callback = globals::callbackManager.CreateCallback("OnMapEnd");
         on_metamod_all_plugins_loaded_callback = globals::callbackManager.CreateCallback("OnMetamodAllPluginsLoaded");
-        // Newer Gamedata while running: a restart notice and OnGamedataUpdateAvailable, never a restart.
         StartGamedataPoll();
 
         // By the slot index the boot Vtable Check verified. Disabled game-frame: no ticks, timers or frame tasks; the

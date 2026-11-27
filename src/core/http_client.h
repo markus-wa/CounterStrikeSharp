@@ -63,9 +63,9 @@ class HttpTransport final : public Transport
     FetchResult Get(const Request& request) const override;
 
   private:
-    Limits limits_;
-    std::chrono::steady_clock::time_point deadline_;
-    mutable std::size_t bytesLeft_;
+    Limits m_limits;
+    std::chrono::steady_clock::time_point m_deadline;
+    mutable std::size_t m_bytesLeft;
 };
 
 } // namespace counterstrikesharp::http

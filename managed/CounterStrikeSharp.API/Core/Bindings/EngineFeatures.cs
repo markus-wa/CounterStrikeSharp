@@ -39,7 +39,7 @@ public static class EngineFeatures
         lock (Lock) _current = null;
     }
 
-    /// <summary>The CS2 build the Bindings were resolved against, e.g. <c>1.42.0.1/2000950</c>.</summary>
+    /// <summary>The CS2 build the Bindings were resolved against, e.g. <c>1.42.0.1 (SourceRevision 11268945)</c>.</summary>
     public static string BuildId => Current.BuildId;
 
     /// <summary>

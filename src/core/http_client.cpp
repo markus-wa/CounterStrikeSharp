@@ -101,23 +101,23 @@ Fetch(const Request& request, const std::string& capError, std::chrono::millisec
 } // namespace
 
 HttpTransport::HttpTransport(Limits limits)
-    : limits_(limits), deadline_(std::chrono::steady_clock::now() + limits.deadline), bytesLeft_(limits.totalBytes)
+    : m_limits(limits), m_deadline(std::chrono::steady_clock::now() + limits.deadline), m_bytesLeft(limits.totalBytes)
 {
 }
 
 FetchResult HttpTransport::Get(const Request& request) const
 {
-    const std::string deadlineError = "deadline of " + std::to_string(limits_.deadline.count()) + " ms exceeded";
-    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline_ - std::chrono::steady_clock::now());
+    const std::string deadlineError = "deadline of " + std::to_string(m_limits.deadline.count()) + " ms exceeded";
+    const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(m_deadline - std::chrono::steady_clock::now());
     if (left <= std::chrono::milliseconds::zero()) return { std::nullopt, deadlineError };
     const auto timeout = left + std::chrono::seconds(1); // the worker's own timeouts: past the deadline, which the wait below enforces
 
     auto capped = request;
     std::string capError = "response exceeds the " + std::to_string(request.maxBytes) + "-byte cap";
-    if (bytesLeft_ < request.maxBytes)
+    if (m_bytesLeft < request.maxBytes)
     {
-        capped.maxBytes = bytesLeft_;
-        capError = "responses exceed the " + std::to_string(limits_.totalBytes) + "-byte total of this fetch";
+        capped.maxBytes = m_bytesLeft;
+        capError = "responses exceed the " + std::to_string(m_limits.totalBytes) + "-byte total of this fetch";
     }
 
     // Shared with the worker, which may outlive this call.
@@ -144,14 +144,14 @@ FetchResult HttpTransport::Get(const Request& request) const
     }
 
     std::unique_lock lock(pending->mutex);
-    if (!pending->done.wait_until(lock, deadline_, [&] {
+    if (!pending->done.wait_until(lock, m_deadline, [&] {
         return pending->result.has_value();
     }))
     {
         pending->abandoned = true;
         return { std::nullopt, deadlineError };
     }
-    if (pending->result->body) bytesLeft_ -= pending->result->body->size();
+    if (pending->result->body) m_bytesLeft -= pending->result->body->size();
     return std::move(*pending->result);
 }
 

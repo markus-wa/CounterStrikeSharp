@@ -208,7 +208,10 @@ build_native() {
 }
 
 # The API's compat check rewrites CompatibilitySuppressions.xml in the checkout; the harness skips it.
+# No compiler server or MSBuild node outlives a build: they would inherit the build lock's fd and hold the lock
+# for every other run until they idle out (or forever, while other builds keep the compiler server busy).
 DOTNET_PROPS="-p:ApiCompatValidateAssemblies=false -p:GenerateCompatibilitySuppressionFile=false"
+DOTNET_PROPS+=" -p:UseSharedCompilation=false -nodeReuse:false"
 
 # Build a managed project with bin/obj outside the checkout; prints the output dir.
 build_managed_project() {

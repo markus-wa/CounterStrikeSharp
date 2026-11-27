@@ -7,9 +7,9 @@
   bundle.py check DATA_REPO         exit 1 when this repo's copies differ from the data repo
 
 The bundled file for an OS is the data repo's newest snapshot for that OS (highest SourceRevision under
-snapshots/<SourceRevision>/<os>.json), stamped with that SourceRevision as the first top-level key. Each OS's
-release artifact carries its own; a snapshot is published per OS and its kills and stamp are per OS, so one merged
-file could not say both. This repo's committed gamedata.json (what local builds, native tests and e2e use) is the
+snapshots/<SourceRevision>/<os>.json, as the data repo's own publisher/snapshots.py finds it), stamped with that
+SourceRevision as the first top-level key. Each OS's release artifact carries its own; a snapshot is published per OS
+and its kills and stamp are per OS, so one merged file could not say both. This repo's committed gamedata.json (what local builds, native tests and e2e use) is the
 Linux one.
 
 `check` also compares the native tests' copy of the publisher's cross-implementation fixtures with the data repo's.
@@ -20,6 +20,7 @@ for its floor exactly what its core trusts. Signatures are checked with the open
 
 import base64
 import hashlib
+import importlib.util
 import json
 import pathlib
 import re
@@ -27,7 +28,6 @@ import subprocess
 import sys
 import tempfile
 
-OSES = ("linux", "windows")
 FORK = pathlib.Path(__file__).resolve().parents[2]
 BUNDLED = "configs/addons/counterstrikesharp/gamedata/gamedata.json"
 FIXTURES = "tests/native/fixtures/gamedata-feed"
@@ -37,15 +37,19 @@ INDEX_SIGNATURE_PREFIX = b"cssharp-gamedata-index-v1\0"  # feed::kIndexSignature
 ED25519_SPKI_PREFIX = bytes.fromhex("302a300506032b6570032100")  # DER SubjectPublicKeyInfo of a raw Ed25519 key
 
 
+def snapshots(data_repo):
+    """The data repo's snapshots/ layout helper (publisher/snapshots.py): "newest" means the same here as there."""
+    spec = importlib.util.spec_from_file_location("gamedata_snapshots", pathlib.Path(data_repo, "publisher", "snapshots.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def newest_snapshot(data_repo, os_name):
-    revisions = [
-        int(path.parent.name)
-        for path in pathlib.Path(data_repo, "snapshots").glob(f"*/{os_name}.json")
-        if path.parent.name.isdigit()
-    ]
-    if not revisions:
+    path = snapshots(data_repo).newest(data_repo, os_name)
+    if path is None:
         raise ValueError(f"no {os_name} snapshot in {data_repo}/snapshots")
-    return str(max(revisions))
+    return path.parent.name
 
 
 def generate(data_repo, os_name):
@@ -113,7 +117,7 @@ def drift(data_repo, fork):
 
 def main(argv):
     command, *args = argv or [""]
-    if command == "gamedata" and len(args) == 2 and args[1] in OSES:
+    if command == "gamedata" and len(args) == 2 and args[1] in snapshots(args[0]).OPERATING_SYSTEMS:
         sys.stdout.buffer.write(generate(*args).encode("utf-8"))
         return 0
     if command == "seq-floor" and len(args) == 1:

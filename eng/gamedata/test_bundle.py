@@ -2,7 +2,9 @@
 """Tests for bundle.py: python3 -m unittest discover -s eng/gamedata"""
 
 import hashlib
+import os
 import pathlib
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -10,6 +12,15 @@ import unittest
 import bundle
 
 FIXTURES = bundle.FORK / bundle.FIXTURES
+# A data repo checkout: its publisher/snapshots.py is what bundle.py reads data repos with (CI: the gamedata job's).
+DATA_REPO = pathlib.Path(os.environ.get("GAMEDATA_REPO", pathlib.Path.home() / "dev/markus-wa/cssharp-gamedata"))
+
+
+def data_repo(path):
+    """An empty data repo at path with the real snapshots/ layout helper."""
+    (path / "publisher").mkdir(parents=True)
+    shutil.copy(DATA_REPO / "publisher/snapshots.py", path / "publisher/snapshots.py")
+    return path
 
 
 def write(path, text):
@@ -19,7 +30,7 @@ def write(path, text):
 
 class Generate(unittest.TestCase):
     def setUp(self):
-        self.repo = pathlib.Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.repo = data_repo(pathlib.Path(self.enterContext(tempfile.TemporaryDirectory())))
         # 900 sorts after 1000 as text; Windows lags Linux by one build.
         write(self.repo / "snapshots/900/linux.json", '{"A": {"offsets": {"linux": 1}}}')
         write(self.repo / "snapshots/900/windows.json", '{"A": {"offsets": {"windows": 2}}}')
@@ -107,7 +118,7 @@ class Drift(unittest.TestCase):
 
     def setUp(self):
         temp = pathlib.Path(self.enterContext(tempfile.TemporaryDirectory()))
-        self.data, self.fork = temp / "data", temp / "fork"
+        self.data, self.fork = data_repo(temp / "data"), temp / "fork"
         write(self.data / "snapshots/5/linux.json", '{"A": {"offsets": {"linux": 1}}}')
         write(self.data / "snapshots/7/windows.json", '{"A": {"offsets": {"windows": 2}}}')
         write(self.data / "publisher/fixtures/feed/index.json", '{"seq": 1}\n')

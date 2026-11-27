@@ -107,15 +107,17 @@ Gamedata (signatures, offsets, Slot Bindings, Kill Switches) is edited in the Ga
 
 `configs/addons/counterstrikesharp/gamedata/gamedata.json` is generated from it: the data repo's newest Linux
 snapshot plus a `sourceRevision` stamp. CI fails when it differs, and when `tests/native/fixtures/gamedata-feed`
-differs from the data repo's `publisher/fixtures`. After a data repo change, check and regenerate:
+differs from the data repo's `publisher/fixtures/feed`. After a data repo change, check and regenerate:
 
 ```shell
 python3 eng/gamedata/bundle.py check <data repo>
 python3 eng/gamedata/bundle.py gamedata <data repo> linux > configs/addons/counterstrikesharp/gamedata/gamedata.json
+GAMEDATA_REPO=<data repo> python3 -m unittest discover -s eng/gamedata   # bundle.py's tests use its publisher/snapshots.py
 ```
 
 A release bundles each OS's newest snapshot in that OS's package and embeds the last published feed `seq` as the
-floor below which servers reject an index. CI reads the data repo from the `GAMEDATA_REPO` and `GAMEDATA_REF`
+floor below which servers reject an index, read only from an index whose signature verifies against the core's
+built-in keys. CI reads the data repo from the `GAMEDATA_REPO` and `GAMEDATA_REF`
 variables (default `markus-wa/cssharp-gamedata` at `main`) and the published feed from `GAMEDATA_FEED_URL`.
 
 [github]: https://github.com/roflmuffin/CounterStrikeSharp

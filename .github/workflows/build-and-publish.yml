@@ -62,6 +62,8 @@ jobs:
           persist-credentials: false
 
       - name: Test
+        env:
+          GAMEDATA_REPO: gamedata-repo
         run: python3 -m unittest discover -s eng/gamedata
 
       - name: Committed copies match the data repo

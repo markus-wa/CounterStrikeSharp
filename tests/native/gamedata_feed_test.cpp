@@ -378,8 +378,7 @@ std::string ReadFixture(const std::string& relative)
 
 // Cross-implementation: tests/native/fixtures/gamedata-feed is a copy of the data repo's publisher/fixtures, written by its
 // publisher with the test key; the publisher's tests check it still produces exactly these bytes (regenerate: data repo
-// README, "Cross-implementation fixtures").
-// shortcut: nothing checks this copy against the data repo's; fold that into ticket 10's drift check, which fetches it.
+// README, "Cross-implementation fixtures"). `eng/gamedata/bundle.py check` fails CI when this copy differs from it.
 TEST_CASE("A feed signed by the Python publisher verifies natively, and a mutated one does not")
 {
     const auto index = ReadFixture("index.json");

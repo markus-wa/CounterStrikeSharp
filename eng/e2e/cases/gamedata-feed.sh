@@ -123,7 +123,7 @@ previous_label="0\\.0\\.0\\.1 \\(SourceRevision $previous\\)"
 case_run carried-forward "$@" --no-smoke --gamedata-cache "$work/carried-cache" --gamedata-jq 'del(.sourceRevision)' \
     --core-jq "$(feed true "http://127.0.0.1:$port/carried")" \
     --expect-log "Gamedata: carried forward from build $previous_label in the Gamedata cache, seq 1, key de4a068ed7d94def; warnings: the Gamedata Feed has no snapshot for build $patch \\(SourceRevision $revision\\) on linux yet" \
-    --expect-log "^ +cssharp\\.server/game-system-events disabled \\(disabled by gamedata \\(carried forward from $previous_label\\): e2e kill\\)" \
+    --expect-log "^ +cssharp\\.server/game-system-events disabled \\(disabled by gamedata: e2e kill\\)" \
     --expect-log "^ +cssharp\\.server/game-system-events: e2e kill, carried forward from $previous_label\$" \
     --expect-no-log 'Initialized GameSystem'
 

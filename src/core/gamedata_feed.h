@@ -53,9 +53,12 @@ struct Provenance
 {
     GamedataSource source = GamedataSource::Bundled;
     bool cached = false; // read from the Gamedata cache, not fetched this boot (always for CarriedForward)
-    std::string build; // the snapshot's build label (not Bundled)
+    std::string build; // the snapshot's build label: this build (ExactBuild) or the one carried forward from; empty for Bundled
     std::optional<std::uint64_t> seq; // the seq of the signed index that vouches for the snapshot (not Bundled)
     std::string keyId; // the key that signed that index (not Bundled)
+    // The chosen Gamedata's "disabledEngineFeatures" (see bindings::ParseKillSwitches), none forced. Carried forward with
+    // the snapshot: they stay in force until this build has its own snapshot.
+    std::vector<bindings::EngineFeatureKill> killSwitches;
     std::vector<std::string> warnings; // why the feed was not used, or what was off with it
 };
 
@@ -124,19 +127,15 @@ struct PollResult
 // nothing without a transport or a gamedataDir (the cache is the record of what was staged). Never throws.
 PollResult PollGamedataFeed(const GamedataSourceInputs& inputs, std::string_view running, const std::string& etag);
 
-// The Kill Switches the chosen Gamedata puts in force ("disabledEngineFeatures", see bindings::ParseKillSwitches), none
-// forced. Those of a carried-forward snapshot name its build: they stay in force until this build has its own snapshot.
-std::vector<bindings::EngineFeatureKill> KillSwitches(const ChosenGamedata& chosen);
-
 // One line, e.g. "Gamedata: exact build 1.42.0.1 (SourceRevision 11268945) from the Gamedata Feed, seq 7, key
 // de4a068ed7d94def", "Gamedata: carried forward from build 1.41.9.7 (SourceRevision 11228971) in the Gamedata cache, seq
 // 7, key de4a068ed7d94def" or "Gamedata: bundled gamedata.json; warnings: index signature invalid".
 std::string FormatProvenance(const Provenance& provenance);
 
 // The provenance in the Resolution Report (managed reads it as EngineFeatures.Gamedata):
-//   { "source": "Bundled"|"ExactBuild"|"CarriedForward", "cached": bool,
-//     "build": "<label>" (ExactBuild) | null, "carriedFrom": "<label>" (CarriedForward) | null,
-//     "seq": <uint> | null, "keyId": "<hex>" | null, "warnings": ["..."], "line": FormatProvenance }
+//   { "source": "Bundled"|"ExactBuild"|"CarriedForward", "cached": bool, "build": "<label>" | null (Bundled),
+//     "seq": <uint> | null, "keyId": "<hex>" | null, "killSwitches": [ { "id", "reason" } ], "warnings": ["..."],
+//     "line": FormatProvenance }
 nlohmann::json ProvenanceToJson(const Provenance& provenance);
 
 } // namespace counterstrikesharp::feed

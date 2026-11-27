@@ -113,12 +113,6 @@ TEST_CASE("A feature-level Kill Switch disables only that Engine Feature, with i
           "Engine Feature cssharp.server/game-system-events is disabled (disabled by gamedata: crashes on map change)");
 
     CHECK(EvaluateEngineFeature(report, kSayHooks).available);
-
-    const ResolutionReport carried("b", { Resolved("Host_Say"), Resolved("IGameSystem_InitAllSystems_pFirst") }, true,
-                                   { { "cssharp.server/game-system-events", "crashes on map change", false, "1.41.9.7 (SourceRevision 11228971)" } });
-    CHECK(DescribeUnavailable(carried, kGameSystem) ==
-          "Engine Feature cssharp.server/game-system-events is disabled (disabled by gamedata (carried forward from 1.41.9.7 "
-          "(SourceRevision 11228971)): crashes on map change)");
 }
 
 TEST_CASE("Forcing on re-enables a killed Engine Feature, never one whose Binding failed")
@@ -165,19 +159,12 @@ TEST_CASE("Every forced Engine Feature warns, and so does a force that names no 
 TEST_CASE("Kill Switches cross to managed with the report")
 {
     const ResolutionReport report("b", {}, true,
-                                  { { "cssharp.server/game-system-events", "crashes", true },
-                                    { "cssharp.chat/say-hooks", "wrong hook", false, "1.41.9.7 (SourceRevision 11228971)" } });
+                                  { { "cssharp.server/game-system-events", "crashes", true }, { "cssharp.chat/say-hooks", "wrong hook" } });
 
     const auto json = nlohmann::json::parse(ResolutionReportToJson(report, {}));
 
     CHECK(json["killSwitches"] ==
-          nlohmann::json::array({ { { "id", "cssharp.server/game-system-events" },
-                                    { "reason", "crashes" },
-                                    { "forced", true },
-                                    { "carriedForwardFrom", nullptr } },
-                                  { { "id", "cssharp.chat/say-hooks" },
-                                    { "reason", "wrong hook" },
-                                    { "forced", false },
-                                    { "carriedForwardFrom", "1.41.9.7 (SourceRevision 11228971)" } } }));
+          nlohmann::json::array({ { { "id", "cssharp.server/game-system-events" }, { "reason", "crashes" }, { "forced", true } },
+                                  { { "id", "cssharp.chat/say-hooks" }, { "reason", "wrong hook" }, { "forced", false } } }));
     CHECK(nlohmann::json::parse(ResolutionReportToJson(ResolutionReport("b", {}), {}))["killSwitches"] == nlohmann::json::array());
 }

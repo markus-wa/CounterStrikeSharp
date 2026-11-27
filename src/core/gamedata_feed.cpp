@@ -552,6 +552,7 @@ ChosenGamedata ChooseGamedata(const GamedataSourceInputs& inputs)
             warnings.push_back(std::string("Gamedata Feed index unreadable: ") + ex.what());
         }
     }
+    chosen.provenance.killSwitches = bindings::ParseKillSwitches(nlohmann::json::parse(chosen.bytes, nullptr, false));
     chosen.provenance.warnings = std::move(warnings);
     return chosen;
 }
@@ -604,15 +605,6 @@ PollResult PollGamedataFeed(const GamedataSourceInputs& inputs, std::string_view
     return result;
 }
 
-std::vector<bindings::EngineFeatureKill> KillSwitches(const ChosenGamedata& chosen)
-{
-    auto kills = bindings::ParseKillSwitches(nlohmann::json::parse(chosen.bytes, nullptr, false));
-    if (chosen.provenance.source == GamedataSource::CarriedForward)
-        for (auto& kill : kills)
-            kill.carriedForwardFrom = chosen.provenance.build;
-    return kills;
-}
-
 std::string FormatProvenance(const Provenance& provenance)
 {
     const auto vouched = ", seq " + std::to_string(provenance.seq.value_or(0)) + ", key " + provenance.keyId;
@@ -629,19 +621,19 @@ std::string FormatProvenance(const Provenance& provenance)
 
 nlohmann::json ProvenanceToJson(const Provenance& provenance)
 {
-    const auto labelIf = [&](GamedataSource source) {
-        return provenance.source == source ? nlohmann::json(provenance.build) : nlohmann::json();
-    };
-    const bool vouched = provenance.source != GamedataSource::Bundled;
+    const auto orNull = [](const auto& value, bool present) { return present ? nlohmann::json(value) : nlohmann::json(); };
+    auto killSwitches = nlohmann::json::array();
+    for (const auto& kill : provenance.killSwitches)
+        killSwitches.push_back({ { "id", kill.id }, { "reason", kill.reason } });
     return {
         { "source", provenance.source == GamedataSource::ExactBuild       ? "ExactBuild"
                     : provenance.source == GamedataSource::CarriedForward ? "CarriedForward"
                                                                           : "Bundled" },
         { "cached", provenance.cached },
-        { "build", labelIf(GamedataSource::ExactBuild) },
-        { "carriedFrom", labelIf(GamedataSource::CarriedForward) },
-        { "seq", vouched && provenance.seq ? nlohmann::json(*provenance.seq) : nlohmann::json() },
-        { "keyId", vouched ? nlohmann::json(provenance.keyId) : nlohmann::json() },
+        { "build", orNull(provenance.build, !provenance.build.empty()) },
+        { "seq", orNull(provenance.seq.value_or(0), provenance.seq.has_value()) },
+        { "keyId", orNull(provenance.keyId, !provenance.keyId.empty()) },
+        { "killSwitches", std::move(killSwitches) },
         { "warnings", provenance.warnings },
         { "line", FormatProvenance(provenance) },
     };

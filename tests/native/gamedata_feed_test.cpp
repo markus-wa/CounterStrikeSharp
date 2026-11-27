@@ -593,23 +593,20 @@ TEST_CASE("Kill Switches carry forward: a kill in build X stays in force on buil
         R"({ "disabledEngineFeatures": [ { "id": "cssharp.server/game-system-events", "reason": "crashes" } ], "Build100": {} })";
     const auto onlyX = FeedOf(1, { "100" }, { { "100", killed } });
 
-    const auto onX = feed::KillSwitches(Boot(onlyX, dir, "100"));
-    REQUIRE(onX.size() == 1);
-    CHECK(onX[0].carriedForwardFrom.empty());
+    const auto onX = Boot(onlyX, dir, "100").provenance;
+    REQUIRE(onX.killSwitches.size() == 1);
+    CHECK(onX.source == feed::GamedataSource::ExactBuild);
 
-    const auto onY = feed::KillSwitches(Boot(onlyX, dir, "200"));
-    REQUIRE(onY.size() == 1);
-    CHECK(onY[0].id == "cssharp.server/game-system-events");
-    CHECK(onY[0].reason == "crashes");
-    CHECK(onY[0].carriedForwardFrom == "1.0.100 (SourceRevision 100)");
+    // The report names the source build of a carried-forward kill through the provenance.
+    const auto onY = Boot(onlyX, dir, "200").provenance;
+    REQUIRE(onY.killSwitches.size() == 1);
+    CHECK(onY.killSwitches[0].id == "cssharp.server/game-system-events");
+    CHECK(onY.killSwitches[0].reason == "crashes");
+    CHECK(onY.source == feed::GamedataSource::CarriedForward);
+    CHECK(onY.build == "1.0.100 (SourceRevision 100)");
 
     const auto published = FeedOf(2, { "100", "200" }, { { "100", killed } });
-    CHECK(feed::KillSwitches(Boot(published, dir, "200")).empty());
-
-    // Bundled Gamedata is never carried forward, whatever build it was made for.
-    const auto bundled = feed::KillSwitches(Boot(kFeedDown, GamedataDir(), "300", killed));
-    REQUIRE(bundled.size() == 1);
-    CHECK(bundled[0].carriedForwardFrom.empty());
+    CHECK(Boot(published, dir, "200").provenance.killSwitches.empty());
 }
 
 TEST_CASE("The bundled gamedata.json is stamped with its build, so it beats a cached older build")
@@ -761,21 +758,21 @@ TEST_CASE("Legacy updater leftovers: gamedata.etag is deleted, and AutoUpdate* c
 TEST_CASE("Provenance appears in the Resolution Report as structured fields with the startup report line")
 {
     const GamedataDir dir;
-    const auto feed = FeedOf(3, { "100", "150" });
+    const auto feed = FeedOf(3, { "100", "150" }, { { "150", R"({ "disabledEngineFeatures": [{ "id": "cssharp.x/y", "reason": "r" }] })" } });
     Boot(feed, dir, "100");
 
     CHECK(feed::ProvenanceToJson(Boot(feed, dir, "150").provenance) == nlohmann::json::parse(R"j({
-        "source": "ExactBuild", "cached": false, "build": "1.0.150 (SourceRevision 150)", "carriedFrom": null, "seq": 3,
-        "keyId": "de4a068ed7d94def", "warnings": [],
+        "source": "ExactBuild", "cached": false, "build": "1.0.150 (SourceRevision 150)", "seq": 3,
+        "keyId": "de4a068ed7d94def", "killSwitches": [{ "id": "cssharp.x/y", "reason": "r" }], "warnings": [],
         "line": "Gamedata: exact build 1.0.150 (SourceRevision 150) from the Gamedata Feed, seq 3, key de4a068ed7d94def" })j"));
     CHECK(feed::ProvenanceToJson(Boot(kFeedDown, dir, "200").provenance) == nlohmann::json::parse(R"j({
-        "source": "CarriedForward", "cached": true, "build": null, "carriedFrom": "1.0.150 (SourceRevision 150)", "seq": 3,
-        "keyId": "de4a068ed7d94def",
+        "source": "CarriedForward", "cached": true, "build": "1.0.150 (SourceRevision 150)", "seq": 3,
+        "keyId": "de4a068ed7d94def", "killSwitches": [{ "id": "cssharp.x/y", "reason": "r" }],
         "warnings": ["Gamedata Feed unreachable: http://feed.test/gamedata/index.json: 404 Not Found",
                      "the Gamedata Feed has no snapshot for build 1.0.200 (SourceRevision 200) on linux yet"],
         "line": "Gamedata: carried forward from build 1.0.150 (SourceRevision 150) in the Gamedata cache, seq 3, key de4a068ed7d94def; warnings: Gamedata Feed unreachable: http://feed.test/gamedata/index.json: 404 Not Found; the Gamedata Feed has no snapshot for build 1.0.200 (SourceRevision 200) on linux yet" })j"));
     CHECK(feed::ProvenanceToJson(feed::ChooseGamedata(Inputs(nullptr)).provenance) == nlohmann::json::parse(R"j({
-        "source": "Bundled", "cached": false, "build": null, "carriedFrom": null, "seq": null, "keyId": null, "warnings": [],
+        "source": "Bundled", "cached": false, "build": null, "seq": null, "keyId": null, "killSwitches": [], "warnings": [],
         "line": "Gamedata: bundled gamedata.json" })j"));
 }
 

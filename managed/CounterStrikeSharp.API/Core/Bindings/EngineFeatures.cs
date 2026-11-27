@@ -72,15 +72,14 @@ public static class EngineFeatures
     public static IReadOnlyList<PluginSignatureEntry> GetPluginSignatures() => PluginSignatures.All;
 
     /// <summary>
-    /// Builds the set from the native report and logs the startup report (one block), then a warning per Kill Switch that
-    /// names no Engine Feature (native warns about forced ones, it reads ForceEnableEngineFeatures).
+    /// Builds the set from the native report and logs the startup report (one block; native warns about forced Kill
+    /// Switches, it reads ForceEnableEngineFeatures).
     /// </summary>
     internal static void LogStartupReport(ILogger logger)
     {
         var current = Current;
         logger.Log(current.AnyDisabled ? LogLevel.Warning : LogLevel.Information, "{StartupReport}",
             current.FormatStartupReport());
-        foreach (var warning in current.FormatUnknownKillSwitches()) logger.LogWarning("{KillSwitch}", warning);
     }
 
     /// <summary>Stops the server (native). Tests replace it.</summary>

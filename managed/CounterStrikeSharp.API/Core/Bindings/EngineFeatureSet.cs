@@ -106,7 +106,8 @@ internal sealed class EngineFeatureSet
     /// Gamedata came from (feed snapshot or bundled, with any feed warnings), every
     /// Heal with its evidence and the vtables whose size changed since Gamedata was generated (same wording as the
     /// native log), Slot Bindings used without a Vtable Check, whether the operator turned Heal off, and the Kill Switches
-    /// in Gamedata (blank Bindings, then disabled Engine Features with their reasons, marked when forced on or unknown).
+    /// in Gamedata (blank Bindings, then disabled Engine Features with their reasons, marked when carried forward, forced
+    /// on or naming no Engine Feature of this version).
     /// </summary>
     public string FormatStartupReport()
     {
@@ -161,10 +162,11 @@ internal sealed class EngineFeatureSet
         {
             text.Append($"\n  Kill Switches in Gamedata: {blank.Count + Report.KillSwitches.Count}");
             foreach (var binding in blank) text.Append($"\n    {binding.Key}: blank (disabled by gamedata)");
+            var carriedForwardFrom = Report.Gamedata?.CarriedForwardFrom;
             foreach (var kill in Report.KillSwitches)
             {
                 text.Append($"\n    {kill.Id}: {kill.Reason}");
-                if (kill.CarriedForwardFrom != null) text.Append($", carried forward from {kill.CarriedForwardFrom}");
+                if (carriedForwardFrom != null) text.Append($", carried forward from {carriedForwardFrom}");
                 if (!_declarations.ContainsKey(kill.Id)) text.Append(", names no Engine Feature (ignored)");
                 else if (kill.Forced) text.Append(", forced on by operator (ForceEnableEngineFeatures)");
             }
@@ -172,11 +174,6 @@ internal sealed class EngineFeatureSet
 
         return text.ToString();
     }
-
-    /// <summary>One warning per Kill Switch whose id names no Engine Feature of this version (a typo, or a removed one).</summary>
-    public IEnumerable<string> FormatUnknownKillSwitches() =>
-        Report.KillSwitches.Where(k => !_declarations.ContainsKey(k.Id)).Select(k =>
-            $"Kill Switch for {k.Id} names no Engine Feature of this CounterStrikeSharp version; ignored ({k.Reason})");
 
     /// <summary>
     /// The fatal error for the operator's <see cref="FailMode.Crash"/>: names every disabled Engine Feature with its failed
@@ -218,8 +215,7 @@ internal sealed class EngineFeatureSet
     {
         var kill = Report.KillSwitches.FirstOrDefault(k => k.Id == feature.Name);
         if (kill is { Forced: false })
-            return new EngineFeatureStatus(feature.Name, true, null, BindingFailureReason.DisabledByGamedata, 0,
-                killSwitchReason: kill.Reason, killSwitchCarriedForwardFrom: kill.CarriedForwardFrom);
+            return new EngineFeatureStatus(feature.Name, true, null, BindingFailureReason.DisabledByGamedata, 0, killSwitch: kill);
 
         var heals = new List<SlotHeal>();
         foreach (var declaration in feature.Bindings)
@@ -234,7 +230,6 @@ internal sealed class EngineFeatureSet
                     checked((int)binding.Offset), slot.Window ?? []));
         }
 
-        return new EngineFeatureStatus(feature.Name, true, null, BindingFailureReason.None, 0, heals, kill?.Reason, kill != null,
-            kill?.CarriedForwardFrom);
+        return new EngineFeatureStatus(feature.Name, true, null, BindingFailureReason.None, 0, heals, kill);
     }
 }

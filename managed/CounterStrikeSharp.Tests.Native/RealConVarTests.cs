@@ -405,8 +405,7 @@ public class RealConVarTests : IDisposable
     public async Task CreatedConVarIsAccessibleFromServerConsole()
     {
         var conVar = Create(42, 0, 100);
-        Server.ExecuteCommand($"{conVar.Name} 73");
-        await WaitOneFrame();
+        await ExecuteCommandAsync($"{conVar.Name} 73");
         Assert.Equal(73, conVar.Value);
         Assert.Equal("73", conVar.ValueAsString);
     }

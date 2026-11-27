@@ -310,6 +310,11 @@ Gamedata ParseGamedata(const nlohmann::json& root, std::string_view platform)
     return gamedata;
 }
 
+Gamedata ParseGamedataBytes(std::string_view bytes, std::string_view platform)
+{
+    return ParseGamedata(nlohmann::json::parse(bytes), platform);
+}
+
 ResolutionReport::ResolutionReport(std::string buildId, std::vector<BindingResult> bindings)
     : m_buildId(std::move(buildId)), m_bindings(std::move(bindings))
 {

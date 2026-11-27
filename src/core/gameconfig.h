@@ -20,7 +20,10 @@ class CGameConfig
     CGameConfig(const std::string& path);
     ~CGameConfig();
 
+    // Reads the Gamedata file at the constructor's path.
     bool Init(char* conf_error, int conf_error_size);
+    // From a Gamedata file's bytes already in memory; the constructor's path then only names it.
+    bool InitFromBytes(std::string_view bytes, char* conf_error, int conf_error_size);
     const std::string GetPath();
     // Gamedata as the Binding resolver reads it, for this OS. Core code never looks keys up itself: it asks the
     // Resolution Report (core/core_bindings.h).
@@ -31,9 +34,6 @@ class CGameConfig
 
   private:
     std::string m_sPath;
-    // use Valve KeyValues in the future.
-    // since we'd better make '\' easier.
-    json m_json;
     bindings::Gamedata m_gamedata;
 };
 

@@ -61,6 +61,10 @@ using Gamedata = std::map<std::string, GamedataEntry, std::less<>>;
 // cannot read is simply absent, and the resolver reports it.
 Gamedata ParseGamedata(const nlohmann::json& root, std::string_view platform);
 
+// The same from a Gamedata file's bytes (the bundled gamedata.json, or a Gamedata Snapshot held in memory). Throws
+// nlohmann::json::parse_error when the bytes are not JSON.
+Gamedata ParseGamedataBytes(std::string_view bytes, std::string_view platform);
+
 enum class BindingKind : std::uint8_t
 {
     Signature, // Gamedata "signatures" (hex pattern, or "@symbol"), scanned in the module named by "library"

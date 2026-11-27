@@ -45,7 +45,7 @@ feed::PublicKey KeyFromHex(std::string_view hex)
     return key;
 }
 
-// Signs like eng/gamedata-feed/sign_feed.py: the signature file is key id + Ed25519 signature.
+// Signs like the data repo's publisher (cssharp-gamedata publisher/publish.py): key id + Ed25519 signature.
 struct Signer
 {
     std::uint8_t secret[64]{};
@@ -68,7 +68,7 @@ struct Signer
     }
 };
 
-// The built-in test key (eng/gamedata-feed/test-key.pem) and one the core does not know.
+// The built-in test key (cssharp-gamedata publisher/test-key.pem) and one the core does not know.
 const Signer kBuiltinTestKey("381e97f90febb8217de4ad207eea6cca8f150c2ffeadd0f84a1b6a2ef1897453");
 const Signer kOperatorKey("0101010101010101010101010101010101010101010101010101010101010101");
 
@@ -352,9 +352,11 @@ std::string ReadFixture(const std::string& relative)
 
 } // namespace
 
-// Cross-implementation: tests/native/fixtures/gamedata-feed was written by the Python signer (eng/gamedata-feed/sign_feed.py
-// with test-key.pem); eng/gamedata-feed/test_sign_feed.py checks it still produces exactly these bytes.
-TEST_CASE("A feed signed by the Python signer verifies natively, and a mutated one does not")
+// Cross-implementation: tests/native/fixtures/gamedata-feed is a copy of the data repo's publisher/fixtures, written by its
+// publisher with the test key; the publisher's tests check it still produces exactly these bytes (regenerate: data repo
+// README, "Cross-implementation fixtures").
+// shortcut: nothing checks this copy against the data repo's; fold that into ticket 10's drift check, which fetches it.
+TEST_CASE("A feed signed by the Python publisher verifies natively, and a mutated one does not")
 {
     const auto index = ReadFixture("index.json");
     const auto signature = ReadFixture("index.json.sig");
@@ -364,7 +366,7 @@ TEST_CASE("A feed signed by the Python signer verifies natively, and a mutated o
     const auto chosen = feed::ChooseGamedata(Inputs(&published));
     CHECK(chosen.bytes == snapshot);
     CHECK(feed::FormatProvenance(chosen.provenance) ==
-          "Gamedata: exact build 1.42.0.1 (SourceRevision 11268945) from the Gamedata Feed, seq 3, key de4a068ed7d94def");
+          "Gamedata: exact build 1.42.0.1 (SourceRevision 11268945) from the Gamedata Feed, seq 1, key de4a068ed7d94def");
 
     const std::pair<const char*, FakeTransport> mutations[] = {
         { "index", Feed(Flip(index, index.size() / 2), signature, snapshot) },

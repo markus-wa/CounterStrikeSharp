@@ -9,7 +9,7 @@
 //                                                        "<os>": { "file": "<path>", "size": <bytes>, "sha256": "<hex>" } } } }
 //   index.json.sig   72 bytes: key id (8) + Ed25519 signature (64) over kIndexSignaturePrefix + index.json's raw bytes
 //   <file>           a Gamedata Snapshot: the complete Gamedata for that build and OS
-// Signer: eng/gamedata-feed/sign_feed.py.
+// Signer: the data repo's publisher (cssharp-gamedata publisher/publish.py).
 
 #include <array>
 #include <cstdint>

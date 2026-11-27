@@ -57,6 +57,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RequiresTakeDamageHooksTest
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PluginSignaturesTestPlugin", "CounterStrikeSharp.Tests.PluginSignatures\PluginSignaturesTestPlugin.csproj", "{4F1C2D7E-8A3B-4E6F-9C1D-5B2A7E8F0C16}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GamedataUpdateTestPlugin", "CounterStrikeSharp.Tests.GamedataUpdate\GamedataUpdateTestPlugin.csproj", "{9B3E5C71-2D4A-4F8B-A6E1-3C7D9F2B5A84}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -167,6 +169,10 @@ Global
 		{4F1C2D7E-8A3B-4E6F-9C1D-5B2A7E8F0C16}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4F1C2D7E-8A3B-4E6F-9C1D-5B2A7E8F0C16}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4F1C2D7E-8A3B-4E6F-9C1D-5B2A7E8F0C16}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9B3E5C71-2D4A-4F8B-A6E1-3C7D9F2B5A84}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9B3E5C71-2D4A-4F8B-A6E1-3C7D9F2B5A84}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9B3E5C71-2D4A-4F8B-A6E1-3C7D9F2B5A84}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9B3E5C71-2D4A-4F8B-A6E1-3C7D9F2B5A84}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

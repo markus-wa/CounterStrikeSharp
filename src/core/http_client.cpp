@@ -9,7 +9,9 @@
 #include "httplib/httplib.h"
 
 namespace counterstrikesharp::http {
+namespace {
 
+// A cpp-httplib client for url ("http://host[:port]"), or null with the reason in error. Never throws.
 std::unique_ptr<httplib::Client> MakeClient(const std::string& url, std::string& error)
 {
     try
@@ -25,8 +27,6 @@ std::unique_ptr<httplib::Client> MakeClient(const std::string& url, std::string&
     }
     return nullptr;
 }
-
-namespace {
 
 // shortcut: cpp-httplib has no limit on the headers' total, only per line (CPPHTTPLIB_HEADER_MAX_LENGTH, 8 KiB) and
 // count (CPPHTTPLIB_HEADER_MAX_COUNT, 100), and reads them whole before Refusal sees them: up to ~800 KiB is buffered

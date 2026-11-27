@@ -2,20 +2,10 @@
 
 #include <chrono>
 #include <cstddef>
-#include <memory>
 #include <optional>
 #include <string>
 
-namespace httplib {
-class Client;
-}
-
 namespace counterstrikesharp::http {
-
-// A cpp-httplib client for url ("http://host[:port]"), or null with the reason in error. Never throws: an https:// URL
-// (the core links no TLS stack) or a malformed URL is an error, not an abort (upstream #931). Requests on the client
-// report failure through their result.
-std::unique_ptr<httplib::Client> MakeClient(const std::string& url, std::string& error);
 
 struct Request
 {
@@ -48,7 +38,8 @@ struct Limits
     std::size_t totalBytes = 2 * 1024 * 1024; // all bodies together
 };
 
-// The real transport, on cpp-httplib through MakeClient. One instance is one fetch: its Limits start at construction
+// The real transport, on cpp-httplib. An https:// URL (the core links no TLS stack) or a malformed URL is an error, never
+// an abort (upstream #931). One instance is one fetch: its Limits start at construction
 // and span all its Gets, so make a new one per boot fetch or poll. Beyond them: 3 s to connect, response headers
 // capped at 8 KiB in total (checked once cpp-httplib has read them, see http_client.cpp), Accept-Encoding identity (a
 // compressed body is refused), redirects refused. Not for concurrent Gets.

@@ -9,7 +9,6 @@
 #include "httplib/httplib.h"
 
 using counterstrikesharp::http::HttpTransport;
-using counterstrikesharp::http::MakeClient;
 using namespace std::chrono_literals;
 
 namespace {
@@ -42,25 +41,6 @@ struct TestServer
 
 } // namespace
 
-// Upstream #931: an https:// AutoUpdateURL aborted the server, since the core links no TLS stack.
-TEST_CASE("An https URL gives no client and a reason instead of aborting")
-{
-    std::string error;
-    CHECK(MakeClient("https://gamedata.cssharp.dev", error) == nullptr);
-    CHECK(error.find("https") != std::string::npos);
-}
-
-TEST_CASE("A malformed URL gives no client and a reason instead of throwing")
-{
-    for (const char* url : { "ftp://gamedata.cssharp.dev", "http://gamedata.cssharp.dev:99999999999" })
-    {
-        CAPTURE(url);
-        std::string error;
-        CHECK(MakeClient(url, error) == nullptr);
-        CHECK_FALSE(error.empty());
-    }
-}
-
 TEST_CASE("The real transport fetches a path under the feed URL and reports anything but a 200 as an error")
 {
     const TestServer feed([](httplib::Server& server) {
@@ -77,9 +57,12 @@ TEST_CASE("The real transport fetches a path under the feed URL and reports anyt
     CHECK(missing.error == "HTTP 404");
 }
 
+// Upstream #931: an https:// AutoUpdateURL aborted the server, since the core links no TLS stack.
 TEST_CASE("The real transport reports an https, malformed or unreachable URL as an error instead of throwing")
 {
     const HttpTransport transport;
+    const auto https = transport.Get({ "https://gamedata.cssharp.dev/index.json", kCap });
+    CHECK(https.error.find("https") != std::string::npos);
     for (const char* url : { "https://gamedata.cssharp.dev/index.json", "ftp://gamedata.cssharp.dev:99999999999/index.json", "not a url",
                              "http://127.0.0.1:1/index.json" })
     {
@@ -88,15 +71,6 @@ TEST_CASE("The real transport reports an https, malformed or unreachable URL as 
         CHECK_FALSE(result.body);
         CHECK_FALSE(result.error.empty());
     }
-}
-
-TEST_CASE("A plain http URL gives a client whose failed request is a result, not an exception")
-{
-    std::string error;
-    const auto client = MakeClient("http://127.0.0.1:1", error);
-    REQUIRE(client != nullptr);
-    CHECK(error.empty());
-    CHECK_FALSE(client->Head("/"));
 }
 
 TEST_CASE("The real transport cuts a body off at the request's cap instead of buffering it")

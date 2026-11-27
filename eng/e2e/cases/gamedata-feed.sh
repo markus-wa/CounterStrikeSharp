@@ -9,6 +9,8 @@
 #             on it and reports it, the startup report says so, and managed GameData reads the snapshot, not the file.
 # tampered:   the same feed with one index byte flipped: boots on bundled and logs why.
 # https, malformed: an https:// or malformed GamedataFeedUrl boots on bundled with a warning, never aborts (#931).
+# blackhole:  a feed host that accepts connections and never answers: the feed step gives up at its 10 s deadline
+#             (CoreConfig loaded -> Gamedata line in the native log) and boots on bundled.
 # Every case checks the bundled gamedata.json is left untouched. Exits non-zero if any case fails; each case's output
 # dir is printed by run.sh.
 set -uo pipefail
@@ -22,9 +24,11 @@ patch=$(sed -n 's/^PatchVersion=//p' "$steam_inf" | tr -d '\r')
 [ -n "$revision" ] && [ -n "$patch" ] || { echo "gamedata-feed: no SourceRevision/PatchVersion in $steam_inf"; exit 1; }
 port=${CSS_E2E_FEED_PORT:-28765} # outside the harness's game port range (27400-27800)
 
+blackhole_port=$((port + 1))
+
 work=$(mktemp -d)
-httpd=
-trap '[ -n "$httpd" ] && kill "$httpd" 2>/dev/null; rm -rf "$work"' EXIT
+httpd= blackhole=
+trap 'kill $httpd $blackhole 2>/dev/null; rm -rf "$work"' EXIT
 
 jq '. + {"E2EFeedMarker": {"offsets": {"linux": 1, "windows": 1}}}' \
     "$repo/configs/addons/counterstrikesharp/gamedata/gamedata.json" >"$work/snapshot.json" || exit 1
@@ -37,7 +41,17 @@ python3 -I -c 'import sys; p = sys.argv[1]; b = bytearray(open(p, "rb").read());
 
 python3 -I -m http.server --bind 127.0.0.1 --directory "$work" "$port" 2>"$work/httpd.log" &
 httpd=$!
-for _ in $(seq 50); do (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null && break; sleep 0.1; done
+python3 -I -c '
+import socket, sys
+s = socket.create_server(("127.0.0.1", int(sys.argv[1])))
+held = []
+while True:
+    held.append(s.accept()[0])
+' "$blackhole_port" &
+blackhole=$!
+for p in "$port" "$blackhole_port"; do
+    for _ in $(seq 50); do (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null && break; sleep 0.1; done
+done
 
 feed() { echo ".GamedataFeedEnabled = $1 | .GamedataFeedUrl = \"$2\""; }
 status=0
@@ -67,5 +81,15 @@ for url in "https://127.0.0.1:$port/feed" "ftp://gamedata.cssharp.dev:9999999999
         --expect-log "Gamedata: bundled gamedata\\.json; warnings: Gamedata Feed unreachable: ${url%%:*}://" \
         --expect-log 'Engine Features for build [0-9.]+ \(SourceRevision [0-9]+\): '
 done
+
+# Seconds from "CoreConfig loaded." to the Gamedata line in the native log ([hh:mm:ss.mmm] stamps): the feed step.
+feed_step_within_budget='awk -F"[][]" "
+    function t(s,  a) { split(s, a, \":\"); return a[1] * 3600 + a[2] * 60 + a[3] }
+    /CoreConfig loaded\\./ { start = t(\$2) }
+    / Gamedata: / && start { took = t(\$2) - start; print \"feed step took \" took \" s\"; exit !(took <= 10.5) }
+    END { if (!took) exit 1 }" counterstrikesharp-native.log'
+case_run blackhole "$@" --no-smoke --core-jq "$(feed true "http://127.0.0.1:$blackhole_port/feed")" \
+    --expect-log "Gamedata: bundled gamedata\\.json; warnings: Gamedata Feed unreachable: http://127\\.0\\.0\\.1:$blackhole_port/feed/index\\.json: deadline of 10000 ms exceeded" \
+    --check "$feed_step_within_budget"
 
 exit $status

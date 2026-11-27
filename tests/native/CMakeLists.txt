@@ -34,6 +34,8 @@ set(CSSHARP_TESTED_SOURCES
     ${CSSHARP_ROOT}/src/core/vtable_fingerprint.cpp
     ${CSSHARP_ROOT}/src/core/elf_relocations.cpp
     ${CSSHARP_ROOT}/src/core/http_client.cpp
+    ${CSSHARP_ROOT}/src/core/sha256.cpp
+    ${CSSHARP_ROOT}/src/core/gamedata_feed.cpp
 )
 
 set(CSSHARP_TEST_SOURCES
@@ -54,11 +56,16 @@ set(CSSHARP_TEST_SOURCES
     contract_test.cpp
     kill_switch_test.cpp
     http_client_test.cpp
+    gamedata_feed_test.cpp
 )
 
 # Vendored x86-64 decoder (plain files, no submodule); the plugin tree may have added it already.
 if(NOT TARGET zydis)
     add_subdirectory(${CSSHARP_ROOT}/libraries/zydis ${CMAKE_CURRENT_BINARY_DIR}/zydis)
+endif()
+# Vendored Ed25519 (Gamedata Feed signatures).
+if(NOT TARGET monocypher)
+    add_subdirectory(${CSSHARP_ROOT}/libraries/monocypher ${CMAKE_CURRENT_BINARY_DIR}/monocypher)
 endif()
 
 # The offline Gamedata generator (tooling/gamedata-generator) is built here too: it shares the fingerprint core with
@@ -71,7 +78,9 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 add_executable(native_tests ${CSSHARP_TEST_SOURCES} ${CSSHARP_TESTED_SOURCES})
-target_link_libraries(native_tests PRIVATE zydis)
+# The real-transport tests run a local cpp-httplib server on a thread.
+find_package(Threads REQUIRED)
+target_link_libraries(native_tests PRIVATE zydis monocypher Threads::Threads)
 
 target_include_directories(native_tests PRIVATE
     ${CSSHARP_ROOT}/src
@@ -82,6 +91,7 @@ target_include_directories(native_tests PRIVATE
 
 target_compile_definitions(native_tests PRIVATE
     CSSHARP_GAMEDATA_PATH="${CSSHARP_ROOT}/configs/addons/counterstrikesharp/gamedata/gamedata.json"
+    CSSHARP_FEED_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/gamedata-feed"
 )
 
 add_test(NAME native_tests COMMAND native_tests)

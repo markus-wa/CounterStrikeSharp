@@ -27,17 +27,20 @@ jobs:
       gitversion_informationalversion: ${{ steps.gitversion.outputs.informationalVersion }}
     steps:
     - name: Install GitVersion
-      uses: gittools/actions/gitversion/setup@v1
+      uses: gittools/actions/gitversion/setup@dcb17efb49ec7f20efdebce79cc397a3952c63db # v1.2.0
       with:
         versionSpec: 6.0.x
 
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: 0
 
+    - name: Every action is pinned by commit SHA
+      run: .github/check-action-pins.sh
+
     - name: Execute GitVersion
       id: gitversion
-      uses: gittools/actions/gitversion/execute@v1
+      uses: gittools/actions/gitversion/execute@dcb17efb49ec7f20efdebce79cc397a3952c63db # v1.2.0
       with:
         useConfigFile: true
 
@@ -48,10 +51,10 @@ jobs:
     outputs:
       seq_floor: ${{ steps.seq_floor.outputs.seq_floor }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Checkout the Gamedata data repo
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ vars.GAMEDATA_REPO || 'markus-wa/cssharp-gamedata' }}
           ref: ${{ vars.GAMEDATA_REF || 'main' }}
@@ -90,7 +93,7 @@ jobs:
           seq=$(python3 eng/gamedata/bundle.py seq-floor index.json)
           echo "seq_floor=$seq" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: bundled-gamedata
           path: bundled/
@@ -118,7 +121,7 @@ jobs:
             echo>>"%GITHUB_ENV%" %%a=%%b
           )
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: "recursive"
 
@@ -129,7 +132,7 @@ jobs:
           cmake -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCSSHARP_GAMEDATA_SEQ_FLOOR=${{ needs.gamedata.outputs.seq_floor }} ..
           cmake --build . --config ${{env.BUILD_TYPE}} -- /m:16
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: bundled-gamedata
           path: bundled
@@ -142,7 +145,7 @@ jobs:
           mkdir build/output/
           mv build/addons build/output
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: counterstrikesharp-windows-${{ needs.setup.outputs.gitversion_semver }}
           path: build/output/
@@ -160,7 +163,7 @@ jobs:
           echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
           echo "SEMVER=${{ needs.setup.outputs.gitversion_semver }}" >> $GITHUB_ENV
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: "recursive"
 
@@ -178,7 +181,7 @@ jobs:
           cd build-tests
           ctest --output-on-failure
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: bundled-gamedata
           path: bundled
@@ -189,7 +192,7 @@ jobs:
           mkdir build/output/
           mv build/addons build/output
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: counterstrikesharp-linux-${{ needs.setup.outputs.gitversion_semver }}
           path: build/output/
@@ -205,10 +208,10 @@ jobs:
         run: echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
       # We don't need expensive submodules for the managed side.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build runtime v${{ needs.setup.outputs.gitversion_semver }}
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: "10.0.x"
 
@@ -219,7 +222,7 @@ jobs:
         run: dotnet test --logger trx --results-directory "TestResults-${{ needs.setup.outputs.gitversion_semver }}" managed/CounterStrikeSharp.API.Tests/CounterStrikeSharp.API.Tests.csproj
 
       - name: Upload dotnet test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: test-results-${{ needs.setup.outputs.gitversion_semver }}
           path: TestResults-${{ needs.setup.outputs.gitversion_semver }}
@@ -239,7 +242,7 @@ jobs:
           /p:InformationalVersion=${{ needs.setup.outputs.gitversion_informationalversion }} \
           managed/CounterStrikeSharp.API
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: counterstrikesharp-api-${{ needs.setup.outputs.gitversion_semver }}
           path: managed/CounterStrikeSharp.API/bin/Release
@@ -256,21 +259,21 @@ jobs:
         run: echo "GITHUB_SHA_SHORT=${GITHUB_SHA::7}" >> $GITHUB_ENV
 
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: counterstrikesharp-windows-${{ needs.setup.outputs.gitversion_semver }}
           path: build/windows
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: counterstrikesharp-linux-${{ needs.setup.outputs.gitversion_semver }}
           path: build/linux
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: counterstrikesharp-api-${{ needs.setup.outputs.gitversion_semver }}
           path: build/api
@@ -304,7 +307,7 @@ jobs:
           (cd build/windows && zip -qq -r ../../counterstrikesharp-with-runtime-windows-${{ needs.setup.outputs.gitversion_semver }}.zip *)
       
       - name: Generate a changelog
-        uses: orhun/git-cliff-action@v4
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
         id: git-cliff
         with:
             config: cliff.toml
@@ -312,7 +315,7 @@ jobs:
 
       - name: Release
         id: release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           append_body: true
           body: |
@@ -334,7 +337,7 @@ jobs:
         if: ${{ !contains(github.ref_name, '-alpha') && !contains(github.ref_name, '-beta') && !contains(github.ref_name, '-rc') }}
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        uses: Ilshidur/action-discord@0.3.2
+        uses: Ilshidur/action-discord@0c4b27844ba47cb1c7bee539c8eead5284ce9fa9 # 0.3.2
         with:
           args: |
             A new release of CS# has been tagged [v${{ needs.setup.outputs.gitversion_semver }}](${{ steps.release.outputs.url }})

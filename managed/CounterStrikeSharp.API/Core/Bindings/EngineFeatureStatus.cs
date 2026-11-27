@@ -8,7 +8,8 @@ namespace CounterStrikeSharp.API.Core;
 public sealed class EngineFeatureStatus
 {
     internal EngineFeatureStatus(string name, bool isDeclared, string? failedBinding, BindingFailureReason reason,
-        int matchCount, IReadOnlyList<SlotHeal>? heals = null, string? killSwitchReason = null, bool forcedOn = false)
+        int matchCount, IReadOnlyList<SlotHeal>? heals = null, string? killSwitchReason = null, bool forcedOn = false,
+        string? killSwitchCarriedForwardFrom = null)
     {
         Name = name;
         IsDeclared = isDeclared;
@@ -18,7 +19,11 @@ public sealed class EngineFeatureStatus
         Heals = heals ?? [];
         KillSwitchReason = killSwitchReason;
         ForcedOn = forcedOn;
+        _killSwitchCarriedForwardFrom = killSwitchCarriedForwardFrom;
     }
+
+    // The build the Kill Switch's Gamedata was carried forward from, for the wording only.
+    private readonly string? _killSwitchCarriedForwardFrom;
 
     internal static EngineFeatureStatus Unknown(string name) => new(name, false, null, BindingFailureReason.None, 0);
 
@@ -69,6 +74,7 @@ public sealed class EngineFeatureStatus
     /// Why not, in the wording of the startup report: <c>"Host_Say: not found"</c>,
     /// <c>"ClientPrint: ambiguous (2 matches)"</c>, <c>"available"</c>,
     /// <c>"available, healed (ISource2Server::GameFrame: slot 19 -> 20)"</c>, <c>"disabled by gamedata: crashes on map
+    /// change"</c>, <c>"disabled by gamedata (carried forward from 1.41.9.7 (SourceRevision 11228971)): crashes on map
     /// change"</c>, <c>"available, forced on by operator (disabled by gamedata: crashes on map change)"</c> or
     /// <c>"unknown Engine Feature"</c>.
     /// </summary>
@@ -78,13 +84,18 @@ public sealed class EngineFeatureStatus
         if (IsAvailable)
         {
             var text = "available";
-            if (ForcedOn) text += $", forced on by operator (disabled by gamedata: {KillSwitchReason})";
+            if (ForcedOn) text += $", forced on by operator ({DescribeKillSwitch()})";
             if (Heals.Count > 0) text += $", healed ({string.Join(", ", Heals)})";
             return text;
         }
 
-        return FailedBinding == null ? $"disabled by gamedata: {KillSwitchReason}" : $"{FailedBinding}: {Reason.Describe(MatchCount)}";
+        return FailedBinding == null ? DescribeKillSwitch() : $"{FailedBinding}: {Reason.Describe(MatchCount)}";
     }
+
+    // Same wording as native bindings::DescribeUnavailable.
+    private string DescribeKillSwitch() => _killSwitchCarriedForwardFrom == null
+        ? $"disabled by gamedata: {KillSwitchReason}"
+        : $"disabled by gamedata (carried forward from {_killSwitchCarriedForwardFrom}): {KillSwitchReason}";
 
     /// <inheritdoc />
     public override string ToString() => IsAvailable ? $"{Name} {Describe()}" : $"{Name} disabled ({Describe()})";

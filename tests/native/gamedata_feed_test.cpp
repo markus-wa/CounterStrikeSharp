@@ -380,8 +380,7 @@ std::string ReadFixture(const std::string& relative)
 
 // Cross-implementation: tests/native/fixtures/gamedata-feed is a copy of the data repo's publisher/fixtures, written by its
 // publisher with the test key; the publisher's tests check it still produces exactly these bytes (regenerate: data repo
-// README, "Cross-implementation fixtures").
-// shortcut: nothing checks this copy against the data repo's; fold that into ticket 10's drift check, which fetches it.
+// README, "Cross-implementation fixtures"). `eng/gamedata/bundle.py check` fails CI when this copy differs from it.
 TEST_CASE("A feed signed by the Python publisher verifies natively, and a mutated one does not")
 {
     const auto index = ReadFixture("index.json");
@@ -541,6 +540,32 @@ TEST_CASE("With no snapshot for this build, the newest of the cached snapshots a
     {
         CHECK(Boot(kFeedDown, dir, "200").bytes == SnapshotOf("150"));
     }
+}
+
+TEST_CASE("Kill Switches carry forward: a kill in build X stays in force on build Y until Y has its own snapshot")
+{
+    const GamedataDir dir;
+    const std::string killed =
+        R"({ "disabledEngineFeatures": [ { "id": "cssharp.server/game-system-events", "reason": "crashes" } ], "Build100": {} })";
+    const auto onlyX = FeedOf(1, { "100" }, { { "100", killed } });
+
+    const auto onX = feed::KillSwitches(Boot(onlyX, dir, "100"));
+    REQUIRE(onX.size() == 1);
+    CHECK(onX[0].carriedForwardFrom.empty());
+
+    const auto onY = feed::KillSwitches(Boot(onlyX, dir, "200"));
+    REQUIRE(onY.size() == 1);
+    CHECK(onY[0].id == "cssharp.server/game-system-events");
+    CHECK(onY[0].reason == "crashes");
+    CHECK(onY[0].carriedForwardFrom == "1.0.100 (SourceRevision 100)");
+
+    const auto published = FeedOf(2, { "100", "200" }, { { "100", killed } });
+    CHECK(feed::KillSwitches(Boot(published, dir, "200")).empty());
+
+    // Bundled Gamedata is never carried forward, whatever build it was made for.
+    const auto bundled = feed::KillSwitches(Boot(kFeedDown, GamedataDir(), "300", killed));
+    REQUIRE(bundled.size() == 1);
+    CHECK(bundled[0].carriedForwardFrom.empty());
 }
 
 TEST_CASE("The bundled gamedata.json is stamped with its build, so it beats a cached older build")

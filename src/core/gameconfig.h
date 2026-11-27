@@ -26,8 +26,6 @@ class CGameConfig
     // Gamedata as the Binding resolver reads it, for this OS. Core code never looks keys up itself: it asks the
     // Resolution Report (core/core_bindings.h).
     const bindings::Gamedata& GetGamedata() const { return m_gamedata; }
-    // Gamedata's feature-level Kill Switches ("disabledEngineFeatures"), none forced yet.
-    const std::vector<bindings::EngineFeatureKill>& GetKillSwitches() const { return m_killSwitches; }
 
     static std::string GetDirectoryName(const std::string& directoryPathInput);
     static std::vector<int16_t> HexToByte(std::string_view src);
@@ -35,7 +33,6 @@ class CGameConfig
   private:
     std::string m_sPath;
     bindings::Gamedata m_gamedata;
-    std::vector<bindings::EngineFeatureKill> m_killSwitches;
 };
 
 } // namespace counterstrikesharp

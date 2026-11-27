@@ -70,7 +70,8 @@ jobs:
           python3 eng/gamedata/bundle.py gamedata gamedata-repo linux > bundled/linux/gamedata.json
           python3 eng/gamedata/bundle.py gamedata gamedata-repo windows > bundled/windows/gamedata.json
 
-      # Fetched over HTTPS whatever scheme the variable names: a forged seq would ship in the release.
+      # Fetched over HTTPS whatever scheme the variable names, and its seq read only once index.json.sig verifies
+      # against the core's built-in keys: a forged seq would ship in the release. Any failure fails the build.
       # shortcut: no feed is published before ticket 09, so with GAMEDATA_FEED_URL unset the floor is 0 (the core's
       # default); 09 sets the variable.
       - name: Seq floor from the published index
@@ -83,7 +84,9 @@ jobs:
             echo "seq_floor=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          curl --proto '=https' -fsS --max-time 30 -o index.json "https://${GAMEDATA_FEED_URL#*://}/index.json"
+          feed="https://${GAMEDATA_FEED_URL#*://}"
+          curl --proto '=https' -fsS --max-time 30 -o index.json "$feed/index.json"
+          curl --proto '=https' -fsS --max-time 30 -o index.json.sig "$feed/index.json.sig"
           seq=$(python3 eng/gamedata/bundle.py seq-floor index.json)
           echo "seq_floor=$seq" >> "$GITHUB_OUTPUT"
 

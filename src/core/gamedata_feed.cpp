@@ -41,6 +41,7 @@ constexpr std::size_t kCachedBuilds = 20;
 
 // shortcut: the only built-in key is the test key (cssharp-gamedata publisher/test-key.pem, private key public), so
 // anyone can sign a feed the core trusts; ticket 09 replaces it with the CI signing key and the offline backup key.
+// eng/gamedata/bundle.py reads this list (one 64-hex-digit literal per key) to verify the release's seq floor.
 constexpr std::string_view kBuiltinKeys[] = {
     "7a8dad7c818602e6381074af43f1bf44903323425627485d51125e2db4f28b5b",
 };

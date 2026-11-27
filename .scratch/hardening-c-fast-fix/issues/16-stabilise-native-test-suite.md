@@ -28,11 +28,31 @@ The ConVar, Command, GameEvent and Listener tests dominate. Many of them wait on
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Tier:** 4 add-on · later
 
-- [ ] Per-test pass rates over 10 unbroken boots recorded in this ticket's comments, and e2e `summary.txt` records the run's flags
-- [ ] Always-failing tests fixed or skipped with a reason
-- [ ] 10 consecutive unbroken boots with 0 failed tests
-- [ ] CI per build: failed tests count for the labels; a no-change build gets the "no change" label in the dry run on 1.41.9.7 → 1.42.0.1 when booted twice
+- [x] Per-test pass rates over 10 unbroken boots recorded in this ticket's comments, and e2e `summary.txt` records the run's flags
+- [x] Always-failing tests fixed or skipped with a reason
+- [x] 10 consecutive unbroken boots with 0 failed tests
+- [x] CI per build: failed tests count for the labels; a no-change build gets the "no change" label in the dry run on 1.41.9.7 → 1.42.0.1 when booted twice
+
+## Comments
+
+- 2026-11-27: Resolved on `spec-c/16-stable-native-suite` (fork) and the data repo. Root cause: tests issued a command, waited one game frame, then asserted. The engine runs its command buffer once per host frame, and after a long frame (~300 "Long frame" lines per laptop run) several game frames run back to back. A probe of 300 commands saw one miss, right after a 272 ms frame. Fix: `TestUtils.ExecuteCommandAsync` queues the command plus a barrier command and waits up to 10 s for the barrier. Global-listener tests count only their own ConVar or entity. `EnsureNativeHandle_IsFreed_Vector3` waits for its own handle. No retries, no new skips. `run.sh` records its flags in `summary.txt`. CI per build: failed tests fail the boot (shortcut removed).
+- Pass rates over 10 unbroken boots before the fix (6367caf9). All other tests passed 10/10; 4 were skipped as before:
+
+  | Test | Passed |
+  |---|---|
+  | RealConVarTests.CreatedConVarIsAccessibleFromServerConsole | 3/10 |
+  | ListenerTests.Listener_ConVarChanged | 5/10 |
+  | CommandTests.CanTriggerCommandsWithSilentChatTrigger | 8/10 |
+  | GameEventTests.CanRegisterAndDeregisterEventHandlers | 8/10 |
+  | NativeObjectsTests.EnsureNativeHandle_IsFreed_Vector3 | 8/10 |
+  | ListenerTests.EntityListenersAreFired | 9/10 |
+  | CommandTests.AddCommandHandler | 9/10 |
+  | CommandTests.CanTriggerCommandsWithPublicChatTrigger | 9/10 |
+  | CommandTests.IssueServerCommand | 9/10 |
+
+  None failed every time; all 9 were flaky. After the fix: 10 boots in a row with 256 passed, 0 failed. Six more boots in the dry run were also clean.
+- Deviation: the 1.41.9.7 → 1.42.0.1 pair can never be "no change", because the generator moves 10 slots. The double-boot dry run instead uses the seed as a fake older build 11268944. Its second run gets `['no change']`.

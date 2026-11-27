@@ -604,7 +604,7 @@ PollResult PollGamedataFeed(const GamedataSourceInputs& inputs, std::string_view
                     return result;
                 }
                 if (!WriteCacheFile(path, *snapshot, result.warnings)) return result;
-                result.update = GamedataUpdate{ entry->label, index.seq, DiffGamedata(running, *snapshot, inputs.os) };
+                result.staged = StagedSnapshot{ entry->label, index.seq, DiffGamedata(running, *snapshot, inputs.os) };
                 result.etag = fetched.etag;
             }
         }
@@ -613,7 +613,7 @@ PollResult PollGamedataFeed(const GamedataSourceInputs& inputs, std::string_view
     }
     catch (const std::exception& ex)
     {
-        result.update.reset();
+        result.staged.reset();
         result.etag.clear();
         result.warnings.push_back(std::string("Gamedata Feed index unreadable: ") + ex.what());
     }

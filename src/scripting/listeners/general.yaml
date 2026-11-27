@@ -1,4 +1,4 @@
 OnTick:
 OnMapStart: mapName:string
 OnMapEnd:
-OnGamedataUpdateAvailable: build:string, seq:uint64, changedEngineFeatures:string
+OnGamedataUpdateAvailable: build:string, seq:uint64, changes:string

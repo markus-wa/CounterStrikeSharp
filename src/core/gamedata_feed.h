@@ -110,7 +110,7 @@ struct GamedataChanges
 };
 
 // A newer verified snapshot for the running build, staged in the Gamedata cache: the next boot applies it.
-struct GamedataUpdate
+struct StagedSnapshot
 {
     std::string build; // the snapshot's build label
     std::uint64_t seq = 0; // the seq of the signed index that vouches for it
@@ -119,7 +119,7 @@ struct GamedataUpdate
 
 struct PollResult
 {
-    std::optional<GamedataUpdate> update; // only the poll that staged it reports it
+    std::optional<StagedSnapshot> staged; // only the poll that staged it reports it
     std::string etag; // the index's ETag for the next poll's If-None-Match; empty: fetch it in full next time
     std::vector<std::string> warnings; // why this poll found nothing
 };

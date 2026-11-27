@@ -50,14 +50,14 @@ std::string Join(const std::vector<std::string>& items)
 }
 
 // On the game thread.
-void RaiseUpdateAvailable(const feed::GamedataUpdate& update)
+void RaiseUpdateAvailable(const feed::StagedSnapshot& staged)
 {
     if (updateAvailable == nullptr || updateAvailable->GetFunctionCount() == 0) return;
     // Managed maps the keys and Kill Switches to Engine Features of both catalogs (ChangedEngineFeatures).
-    const auto changes = nlohmann::json{ { "keys", update.changes.keys }, { "killSwitches", update.changes.killSwitches } }.dump();
+    const auto changes = nlohmann::json{ { "keys", staged.changes.keys }, { "killSwitches", staged.changes.killSwitches } }.dump();
     updateAvailable->ScriptContext().Reset();
-    updateAvailable->ScriptContext().Push(update.build.c_str());
-    updateAvailable->ScriptContext().Push(update.seq);
+    updateAvailable->ScriptContext().Push(staged.build.c_str());
+    updateAvailable->ScriptContext().Push(staged.seq);
     updateAvailable->ScriptContext().Push(changes.c_str());
     updateAvailable->Execute();
 }
@@ -76,14 +76,14 @@ void PollLoop(Poll& state)
         etag = result.etag;
         for (const auto& warning : result.warnings)
             CSSHARP_CORE_WARN("Gamedata Feed poll: {}", warning);
-        if (const auto& update = result.update)
+        if (const auto& staged = result.staged)
         {
             CSSHARP_CORE_INFO("Newer Gamedata for build {} (seq {}) is staged in the Gamedata cache: a restart will apply it. Changed "
                               "Gamedata keys: {}; changed Kill Switches: {}",
-                              update->build, update->seq, Join(update->changes.keys), Join(update->changes.killSwitches));
+                              staged->build, staged->seq, Join(staged->changes.keys), Join(staged->changes.killSwitches));
             // shortcut: game frames drain this queue, and a hibernating server may not run them, so the event can wait until
             // the server wakes; drain it from UpdateWhenNotInGame too if admins need it on an empty server.
-            globals::tickScheduler.schedule(0, [update = *update] { RaiseUpdateAvailable(update); });
+            globals::tickScheduler.schedule(0, [staged = *staged] { RaiseUpdateAvailable(staged); });
         }
         lock.lock();
     }

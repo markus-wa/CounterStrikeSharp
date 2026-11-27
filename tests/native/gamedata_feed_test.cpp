@@ -837,14 +837,14 @@ TEST_CASE("Poll: a newer seq with a changed snapshot for this build is staged an
 
     const auto newer = FeedOf(2, { "100", "200" }, { { "100", kChangedSnapshot } });
     const auto poll = Poll(newer, dir, running);
-    REQUIRE(poll.update);
-    CHECK(poll.update->build == "1.0.100 (SourceRevision 100)");
-    CHECK(poll.update->seq == 2);
-    CHECK(poll.update->changes.keys == std::vector<std::string>{ "Added", "Build100" });
-    CHECK(poll.update->changes.killSwitches == std::vector<std::string>{ "cssharp.chat/say-hooks" });
+    REQUIRE(poll.staged);
+    CHECK(poll.staged->build == "1.0.100 (SourceRevision 100)");
+    CHECK(poll.staged->seq == 2);
+    CHECK(poll.staged->changes.keys == std::vector<std::string>{ "Added", "Build100" });
+    CHECK(poll.staged->changes.killSwitches == std::vector<std::string>{ "cssharp.chat/say-hooks" });
     CHECK(poll.warnings.empty());
 
-    CHECK_FALSE(Poll(newer, dir, running).update); // staged already: no second notice
+    CHECK_FALSE(Poll(newer, dir, running).staged); // staged already: no second notice
 
     const auto next = Boot(kFeedDown, dir, "100");
     CHECK(next.bytes == kChangedSnapshot);
@@ -860,19 +860,19 @@ TEST_CASE("Poll: the same seq, a newer seq with this build's snapshot unchanged,
     SUBCASE("same seq")
     {
         const auto poll = Poll(current, dir, running);
-        CHECK_FALSE(poll.update);
+        CHECK_FALSE(poll.staged);
         CHECK(poll.warnings.empty());
     }
     SUBCASE("newer seq, only another build changed")
     {
-        CHECK_FALSE(Poll(FeedOf(2, { "100", "200" }), dir, running).update);
+        CHECK_FALSE(Poll(FeedOf(2, { "100", "200" }), dir, running).staged);
     }
     SUBCASE("304: not even the signature or a snapshot is fetched")
     {
         const auto newer = FeedOf(2, { "100" }, { { "100", kChangedSnapshot } });
         const auto etag = newer.files.at(kFeedUrl + "/index.json");
         const auto poll = Poll(newer, dir, running, etag);
-        CHECK_FALSE(poll.update);
+        CHECK_FALSE(poll.staged);
         CHECK(poll.etag == etag);
         CHECK(newer.requested == std::vector<std::string>{ kFeedUrl + "/index.json" });
     }
@@ -889,7 +889,7 @@ TEST_CASE("Poll: a failed verification or a rollback stages nothing and warns")
         auto& snapshot = tampered.files.at(kFeedUrl + "/snapshots/100/linux.json");
         snapshot = Flip(snapshot, 3);
         const auto poll = Poll(tampered, dir, running);
-        CHECK_FALSE(poll.update);
+        CHECK_FALSE(poll.staged);
         CHECK(poll.etag.empty()); // retried in full next time
         CHECK(poll.warnings == std::vector<std::string>{ "snapshot snapshots/100/linux.json does not match the signed index (size " +
                                                           std::to_string(kChangedSnapshot.size()) + ", index says " +
@@ -901,20 +901,20 @@ TEST_CASE("Poll: a failed verification or a rollback stages nothing and warns")
         auto& signature = tampered.files.at(kFeedUrl + "/index.json.sig");
         signature = Flip(signature, 40);
         const auto poll = Poll(tampered, dir, running);
-        CHECK_FALSE(poll.update);
+        CHECK_FALSE(poll.staged);
         CHECK(poll.warnings == std::vector<std::string>{ "index signature invalid (key de4a068ed7d94def)" });
     }
     SUBCASE("rollback")
     {
         const auto poll = Poll(FeedOf(2, { "100" }, { { "100", kChangedSnapshot } }), dir, running);
-        CHECK_FALSE(poll.update);
+        CHECK_FALSE(poll.staged);
         CHECK(poll.warnings ==
               std::vector<std::string>{ "Gamedata Feed index seq 2 is below the highest accepted seq 3, rejected as a rollback" });
     }
     SUBCASE("unreachable")
     {
         const auto poll = Poll(kFeedDown, dir, running);
-        CHECK_FALSE(poll.update);
+        CHECK_FALSE(poll.staged);
         CHECK(poll.warnings == std::vector<std::string>{ "Gamedata Feed unreachable: http://feed.test/gamedata/index.json: 404 Not Found" });
     }
     CHECK(Boot(kFeedDown, dir, "100").bytes == running);

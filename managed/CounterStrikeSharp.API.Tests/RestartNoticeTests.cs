@@ -8,9 +8,9 @@ namespace CounterStrikeSharp.API.Tests;
 // OnGamedataUpdateAvailable: native raises it with the build, the seq and what the staged snapshot changes (Gamedata keys
 // and Kill Switch ids); plugins receive the Engine Features of both catalogs that it touches.
 [Collection(nameof(EngineFeaturesApiTests))]
-public class GamedataUpdateTests : IDisposable
+public class RestartNoticeTests : IDisposable
 {
-    public GamedataUpdateTests()
+    public RestartNoticeTests()
     {
         var sayHooks = new EngineFeatureDeclaration("cssharp.chat/say-hooks", [BindingDeclaration.Signature("Host_Say")]);
         var report = new ResolutionReport("1.42.0.1 (SourceRevision 11268945)", [], [sayHooks]);

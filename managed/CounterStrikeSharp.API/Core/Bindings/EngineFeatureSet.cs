@@ -51,8 +51,8 @@ internal sealed class EngineFeatureSet
         _statuses.TryGetValue(name, out var status) ? status : EngineFeatureStatus.Unknown(name);
 
     /// <summary>
-    /// The Engine Features a Gamedata update touches: every declared one with a Binding among <paramref name="keys"/>, and
-    /// every Kill Switch id in <paramref name="killSwitches"/> (declared or not), ordered by name.
+    /// The Engine Features a staged Gamedata Snapshot touches: every declared one with a Binding among
+    /// <paramref name="keys"/>, and every Kill Switch id in <paramref name="killSwitches"/> (declared or not), ordered by name.
     /// </summary>
     public IEnumerable<string> ChangedBy(IEnumerable<string> keys, IEnumerable<string> killSwitches)
     {

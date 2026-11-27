@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace CounterStrikeSharp.API.Core;
 
 /// <summary>
-/// The Engine Features whose Gamedata a staged update changes (<see cref="Listeners.OnGamedataUpdateAvailable"/>): those
+/// The Engine Features whose Gamedata a staged Gamedata Snapshot changes (<see cref="Listeners.OnGamedataUpdateAvailable"/>): those
 /// with a Binding whose Gamedata entry changes, and those whose Kill Switch is added, removed or changes, ordered by name.
 /// Their state may change on the next boot; whether it does is only known once that boot resolves the new Gamedata.
 /// </summary>

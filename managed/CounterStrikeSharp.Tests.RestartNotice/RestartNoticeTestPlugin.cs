@@ -4,16 +4,16 @@ using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Timers;
 using Microsoft.Extensions.Logging;
 
-namespace GamedataUpdateTestPlugin;
+namespace RestartNoticeTestPlugin;
 
 /// <summary>
-/// End-to-end fixture for the Gamedata Feed poll (eng/e2e/cases/gamedata-update.sh): logs the Gamedata provenance at load,
+/// End-to-end fixture for the Gamedata Feed poll (eng/e2e/cases/restart-notice.sh): logs the Gamedata provenance at load,
 /// every OnGamedataUpdateAvailable with its payload, and every 10 s how many ticks ran and the longest gap between two,
 /// so a poll that blocked the game thread would show as a gap.
 /// </summary>
-public class GamedataUpdateTestPlugin : BasePlugin
+public class RestartNoticeTestPlugin : BasePlugin
 {
-    public override string ModuleName => "Gamedata Update Test";
+    public override string ModuleName => "Restart Notice Test";
     public override string ModuleVersion => "v1.0.0";
 
     private readonly Stopwatch _sinceTick = new();
@@ -23,10 +23,10 @@ public class GamedataUpdateTestPlugin : BasePlugin
     public override void Load(bool hotReload)
     {
         var gamedata = EngineFeatures.Gamedata;
-        Logger.LogInformation("GamedataUpdateTest: provenance source={Source} seq={Seq}", gamedata?.Source, gamedata?.Seq);
+        Logger.LogInformation("RestartNoticeTest: provenance source={Source} seq={Seq}", gamedata?.Source, gamedata?.Seq);
 
         RegisterListener<Listeners.OnGamedataUpdateAvailable>((build, seq, changed) =>
-            Logger.LogInformation("GamedataUpdateTest: OnGamedataUpdateAvailable build={Build} seq={Seq} changed={Changed}", build, seq,
+            Logger.LogInformation("RestartNoticeTest: OnGamedataUpdateAvailable build={Build} seq={Seq} changed={Changed}", build, seq,
                 changed.ToString()));
 
         RegisterListener<Listeners.OnTick>(() =>
@@ -37,7 +37,7 @@ public class GamedataUpdateTestPlugin : BasePlugin
         });
         AddTimer(10, () =>
         {
-            Logger.LogInformation("GamedataUpdateTest: {Ticks} ticks, max gap {MaxGap:F0} ms", _ticks, _maxGapMs);
+            Logger.LogInformation("RestartNoticeTest: {Ticks} ticks, max gap {MaxGap:F0} ms", _ticks, _maxGapMs);
             _ticks = 0;
             _maxGapMs = 0;
         }, TimerFlags.REPEAT);

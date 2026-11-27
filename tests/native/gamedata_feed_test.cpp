@@ -79,11 +79,12 @@ struct FakeTransport final : http::Transport
     std::map<std::string, std::string> files;
     mutable std::vector<std::string> requested;
 
-    http::FetchResult Get(const std::string& url) const override
+    http::FetchResult Get(const http::Request& request) const override
     {
-        requested.push_back(url);
-        const auto file = files.find(url);
+        requested.push_back(request.url);
+        const auto file = files.find(request.url);
         if (file == files.end()) return { std::nullopt, "404 Not Found" };
+        if (file->second.size() > request.maxBytes) return { std::nullopt, "over the cap" };
         return { file->second, "" };
     }
 };
@@ -289,6 +290,27 @@ TEST_CASE("An unreachable feed or a malformed signed index boots on bundled with
         const auto chosen = feed::ChooseGamedata(Inputs(&transport));
         CHECK(chosen.bytes == kBundled);
         CHECK(AnyWarningContains(chosen.provenance, "index unreadable"));
+    }
+}
+
+// The caps are the spec's (index 64 KiB, signature 256 B, snapshot 1 MiB), the same on both OSes.
+TEST_CASE("A feed file over its download cap boots on bundled with a warning, on Linux and Windows")
+{
+    for (const char* os : { "linux", "windows" })
+    {
+        CAPTURE(os);
+        const auto index = IndexFor(kSnapshot, "11268945", os);
+        const auto signature = kBuiltinTestKey.Sign(index);
+        const auto check = [&](const FakeTransport& transport, const std::string& file) {
+            auto inputs = Inputs(&transport);
+            inputs.os = os;
+            const auto chosen = feed::ChooseGamedata(inputs);
+            CHECK(chosen.bytes == kBundled);
+            CHECK(AnyWarningContains(chosen.provenance, kFeedUrl + "/" + file + ": over the cap"));
+        };
+        check(Feed(std::string(64 * 1024 + 1, ' '), signature, kSnapshot, os), "index.json");
+        check(Feed(index, std::string(257, 's'), kSnapshot, os), "index.json.sig");
+        check(Feed(index, signature, std::string(1024 * 1024 + 1, ' '), os), "snapshots/11268945/" + std::string(os) + ".json");
     }
 }
 

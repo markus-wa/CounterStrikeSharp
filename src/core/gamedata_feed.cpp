@@ -45,6 +45,11 @@ constexpr std::string_view kBuiltinKeys[] = {
 constexpr std::size_t kKeyIdSize = 8;
 constexpr std::size_t kSignatureSize = 64;
 
+// Download caps (the transport cuts a longer body off): today's Gamedata is ~34 KB.
+constexpr std::size_t kIndexCap = 64 * 1024;
+constexpr std::size_t kSignatureCap = 256;
+constexpr std::size_t kSnapshotCap = 1024 * 1024;
+
 std::string ToHex(const std::uint8_t* bytes, std::size_t size)
 {
     static constexpr char digits[] = "0123456789abcdef";
@@ -121,9 +126,9 @@ bool VerifyIndex(std::string_view index, std::string_view signature, const std::
     return true;
 }
 
-std::string Fetch(const http::Transport& transport, const std::string& url, std::string& error)
+std::string Fetch(const http::Transport& transport, const std::string& url, std::size_t maxBytes, std::string& error)
 {
-    auto result = transport.Get(url);
+    auto result = transport.Get({ url, maxBytes });
     if (!result.body) error = "Gamedata Feed unreachable: " + url + ": " + result.error;
     return result.body.value_or("");
 }
@@ -206,7 +211,7 @@ bool Matches(std::string_view snapshot, const SnapshotEntry& entry)
 std::optional<std::string> FetchSnapshot(const http::Transport& transport, const std::string& base, const SnapshotEntry& entry,
                                          const std::string& os, std::string& error)
 {
-    auto snapshot = Fetch(transport, base + "/" + entry.file, error);
+    auto snapshot = Fetch(transport, base + "/" + entry.file, kSnapshotCap, error);
     if (!error.empty()) return std::nullopt;
     if (!Matches(snapshot, entry))
     {
@@ -352,8 +357,8 @@ ChosenGamedata Choose(const GamedataSourceInputs& inputs, std::vector<std::strin
     std::optional<Index> fetched;
     {
         std::string error;
-        auto index = Fetch(*inputs.transport, base + "/index.json", error);
-        auto signature = error.empty() ? Fetch(*inputs.transport, base + "/index.json.sig", error) : "";
+        auto index = Fetch(*inputs.transport, base + "/index.json", kIndexCap, error);
+        auto signature = error.empty() ? Fetch(*inputs.transport, base + "/index.json.sig", kSignatureCap, error) : "";
         if (error.empty()) fetched = AcceptIndex(std::move(index), std::move(signature), keys, error);
         if (fetched && fetched->seq < floor)
         {

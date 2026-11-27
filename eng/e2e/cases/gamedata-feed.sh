@@ -14,6 +14,8 @@
 #             and reports it as cache; managed reads it too.
 # tampered+cache: the tampered feed on a second start: falls back to the cached snapshot and logs why.
 # https, malformed: an https:// or malformed GamedataFeedUrl boots on bundled with a warning, never aborts (#931).
+# blackhole:  a feed host that accepts connections and never answers: the feed step gives up at its 10 s deadline
+#             (CoreConfig loaded -> Gamedata line in the native log) and boots on bundled.
 # Every case checks the bundled gamedata.json is left untouched. Exits non-zero if any case fails; each case's output
 # dir is printed by run.sh.
 set -uo pipefail
@@ -31,8 +33,8 @@ gamedata_repo=${CSS_E2E_GAMEDATA_REPO:-$HOME/dev/markus-wa/cssharp-gamedata}
     { echo "gamedata-feed: no publisher in $gamedata_repo (set CSS_E2E_GAMEDATA_REPO to the cssharp-gamedata checkout)"; exit 1; }
 
 work=$(mktemp -d)
-httpd=
-trap '[ -n "$httpd" ] && kill "$httpd" 2>/dev/null; rm -rf "$work"' EXIT
+httpd= blackhole=
+trap 'kill $httpd $blackhole 2>/dev/null; rm -rf "$work"' EXIT
 
 # A one-build data repo: this build's Linux snapshot is the bundled Gamedata (without its bundled-only sourceRevision
 # stamp, which the publisher refuses) plus a marker entry.
@@ -50,12 +52,25 @@ python3 -I -c 'import sys; p = sys.argv[1]; b = bytearray(open(p, "rb").read());
 
 python3 -I -u -m http.server --bind 127.0.0.1 --directory "$work" "$port" >"$work/httpd.out" 2>"$work/httpd.log" &
 httpd=$!
-# Wait for this server, not just the port: a port taken by another run (e.g. a concurrent agent's) would serve its feed.
-until grep -q '^Serving HTTP' "$work/httpd.out"; do
-    kill -0 "$httpd" 2>/dev/null ||
-        { echo "gamedata-feed: feed server failed on port $port (set CSS_E2E_FEED_PORT):"; cat "$work/httpd.log"; exit 1; }
-    sleep 0.1
+# Accepts and never answers, on a free port it prints.
+python3 -I -u -c '
+import socket
+s = socket.create_server(("127.0.0.1", 0))
+print("Serving HTTP (blackhole) port", s.getsockname()[1])
+held = []
+while True:
+    held.append(s.accept()[0])
+' >"$work/blackhole.out" 2>"$work/blackhole.log" &
+blackhole=$!
+# Wait for these servers, not just the ports: a port taken by another run (e.g. a concurrent agent's) would serve its feed.
+for server in httpd blackhole; do
+    until grep -q '^Serving HTTP' "$work/$server.out"; do
+        kill -0 "${!server}" 2>/dev/null ||
+            { echo "gamedata-feed: $server failed (set CSS_E2E_FEED_PORT if port $port is taken):"; cat "$work/$server.log"; exit 1; }
+        sleep 0.1
+    done
 done
+blackhole_port=$(sed -n 's/^Serving HTTP (blackhole) port //p' "$work/blackhole.out")
 
 feed() { echo ".GamedataFeedEnabled = $1 | .GamedataFeedUrl = \"$2\""; }
 status=0
@@ -95,5 +110,15 @@ for url in "https://127.0.0.1:$port/feed" "ftp://gamedata.cssharp.dev:9999999999
         --expect-log "Gamedata: bundled gamedata\\.json; warnings: Gamedata Feed unreachable: ${url%%:*}://" \
         --expect-log 'Engine Features for build [0-9.]+ \(SourceRevision [0-9]+\): '
 done
+
+# Seconds from "CoreConfig loaded." to the Gamedata line in the native log ([hh:mm:ss.mmm] stamps): the feed step.
+feed_step_within_budget='awk -F"[][]" "
+    function t(s,  a) { split(s, a, \":\"); return a[1] * 3600 + a[2] * 60 + a[3] }
+    /CoreConfig loaded\\./ { start = t(\$2) }
+    / Gamedata: / && start { took = t(\$2) - start; print \"feed step took \" took \" s\"; exit !(took <= 10.5) }
+    END { if (!took) exit 1 }" counterstrikesharp-native.log'
+case_run blackhole "$@" --no-smoke --core-jq "$(feed true "http://127.0.0.1:$blackhole_port/feed")" \
+    --expect-log "Gamedata: bundled gamedata\\.json; warnings: Gamedata Feed unreachable: http://127\\.0\\.0\\.1:$blackhole_port/feed/index\\.json: deadline of 10000 ms exceeded" \
+    --check "$feed_step_within_budget"
 
 exit $status

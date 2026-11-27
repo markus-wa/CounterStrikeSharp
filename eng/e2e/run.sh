@@ -62,7 +62,8 @@
 #
 # Environment:
 #   CSS_E2E_HOME        Cache root (default ~/.cache/cssharp-e2e): build dirs, downloads, server copy.
-#   CSS_E2E_SERVER_SRC  Pristine server install to copy once (default ~/.cache/cs2-14201). Never written.
+#   CSS_E2E_SERVER_SRC  Pristine server install to copy (default ~/.cache/cs2-14201); copied again when its
+#                       game/csgo/steam.inf changes (another build). Never written.
 #   CSS_E2E_LOCK        Lock file serialising server runs (default ~/.cache/cssharp-e2e.lock).
 #   CSS_E2E_S2SDK_SHA   s2sdk commit used for the native build (default: alliedmodders/s2sdk#128 head).
 #                       Harness-only override; the libraries/hl2sdk-cs2 submodule pointer is not used.
@@ -292,7 +293,12 @@ fi
 
 # The server copy is made once. On copy-on-write filesystems it is a reflink
 # copy (no shared data at all). Otherwise it is a hardlink copy whose small
-# files (the ones a server may rewrite) are replaced by private copies.
+# files (the ones a server may rewrite) are replaced by private copies. It is made again when the pristine server
+# moved to another build (its steam.inf differs from the copy's), e.g. after a steamcmd update.
+if [ -e "$SERVER/.ready" ] && ! cmp -s "$SERVER_SRC/game/csgo/steam.inf" "$SERVER/game/csgo/steam.inf"; then
+    log "pristine server $SERVER_SRC is on another build than the copy"
+    rm -f "$SERVER/.ready"
+fi
 if [ ! -e "$SERVER/.ready" ]; then
     [ -x "$SERVER_SRC/game/bin/linuxsteamrt64/cs2" ] || die "no server at $SERVER_SRC"
     log "creating server copy $SERVER from $SERVER_SRC"

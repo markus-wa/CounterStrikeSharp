@@ -8,6 +8,9 @@
 # exact:      the feed lists a snapshot for the server's build (the bundled Gamedata plus a marker entry): native boots
 #             on it and reports it, the startup report says so, and managed GameData reads the snapshot, not the file.
 # tampered:   the same feed with one index byte flipped: boots on bundled and logs why.
+# cache:      a second start after exact (its Gamedata cache installed) with the feed down: boots on the cached snapshot
+#             and reports it as cache; managed reads it too.
+# tampered+cache: the tampered feed on a second start: falls back to the cached snapshot and logs why.
 # https, malformed: an https:// or malformed GamedataFeedUrl boots on bundled with a warning, never aborts (#931).
 # Every case checks the bundled gamedata.json is left untouched. Exits non-zero if any case fails; each case's output
 # dir is printed by run.sh.
@@ -56,11 +59,21 @@ case_run off "$@" --no-smoke --core-jq "$(feed false "http://127.0.0.1:$port/fee
 case_run exact "$@" --no-smoke --core-jq "$(feed true "http://127.0.0.1:$port/feed")" \
     --expect-log "Gamedata: exact build $patch \\(SourceRevision $revision\\) from the Gamedata Feed, seq 1, key de4a068ed7d94def" \
     --expect-log "^ +Gamedata: exact build $patch " \
-    --expect-log "Successfully loaded $entries game data entries from core Gamedata"
+    --expect-log "Successfully loaded $entries game data entries from core Gamedata" \
+    --check "cp -r gamedata-cache '$work/cache'"
 
 case_run tampered "$@" --no-smoke --core-jq "$(feed true "http://127.0.0.1:$port/tampered")" \
     --expect-log 'Gamedata: bundled gamedata\.json; warnings: index signature invalid \(key de4a068ed7d94def\)' \
     --expect-log '^ +Gamedata: bundled gamedata\.json; warnings: index signature invalid'
+
+cached="exact build $patch \\(SourceRevision $revision\\) from the Gamedata cache, seq 1, key de4a068ed7d94def"
+case_run cache "$@" --no-smoke --gamedata-cache "$work/cache" --core-jq "$(feed true "http://127.0.0.1:$port/down")" \
+    --expect-log "Gamedata: $cached; warnings: Gamedata Feed unreachable: http://127.0.0.1:$port/down/index\\.json: HTTP 404" \
+    --expect-log "^ +Gamedata: $cached" \
+    --expect-log "Successfully loaded $entries game data entries from core Gamedata"
+
+case_run tampered+cache "$@" --no-smoke --gamedata-cache "$work/cache" --core-jq "$(feed true "http://127.0.0.1:$port/tampered")" \
+    --expect-log "Gamedata: $cached; warnings: index signature invalid \\(key de4a068ed7d94def\\)"
 
 for url in "https://127.0.0.1:$port/feed" "ftp://gamedata.cssharp.dev:99999999999"; do
     case_run "$url" "$@" --no-smoke --core-jq "$(feed true "$url")" \

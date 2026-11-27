@@ -12,6 +12,8 @@
 #
 # Install (applied to the server copy only, never to this checkout):
 #   --gamedata FILE         Install FILE as gamedata.json instead of the built one.
+#   --gamedata-cache DIR    Install DIR as the Gamedata cache (gamedata/cache), e.g. a previous run's
+#                           gamedata-cache output, to boot as a second start would.
 #   --gamedata-jq FILTER    Apply a jq filter to the installed gamedata.json. Repeatable,
 #                           applied in order. Examples:
 #                             'del(.Host_Say)'                              key missing
@@ -55,7 +57,8 @@
 #   --require-smoke-pass    Fail when the smoke test reports any failed test.
 #
 # Output:
-#   --out DIR               Output dir (default: $CSS_E2E_HOME/runs/<timestamp>).
+#   --out DIR               Output dir (default: $CSS_E2E_HOME/runs/<timestamp>). Holds the logs and,
+#                           when the server wrote one, the Gamedata cache as gamedata-cache/.
 #
 # Exit codes: 0 ok, 1 setup/build error, 2 boot failure (exit or timeout before load),
 #             3 server died after load, 4 smoke test timed out, 5 checks failed.
@@ -102,6 +105,7 @@ STEAMCLIENT=${CSS_E2E_STEAMCLIENT:-$HOME/.cache/cs2-poc-steamcmd/linux64/steamcl
 do_build=1 build_only=0 do_smoke=1 require_pass=0
 map=de_dust2 boot_timeout=180 smoke_timeout=900 settle=10 out=""
 gamedata_file=""
+gamedata_cache=""
 gamedata_jq=() core_jq=() server_patches=() plugins=() plugin_projects=() execs=() server_args=() removals=()
 # Boot is done when every one of these extended regexes matches a console line.
 ready=('Finished loading plugin Native Tests' 'Host activate: Loading \(')
@@ -115,6 +119,7 @@ while [ $# -gt 0 ]; do
         --no-build) do_build=0 ;;
         --build-only) build_only=1 ;;
         --gamedata) gamedata_file=$(realpath "$2"); shift ;;
+        --gamedata-cache) gamedata_cache=$(realpath "$2"); shift ;;
         --gamedata-jq) gamedata_jq+=("$2"); shift ;;
         --core-jq) core_jq+=("$2"); shift ;;
         --server-patch) server_patches+=("$2"); shift ;;
@@ -383,6 +388,7 @@ done
 
 gd=$addons/counterstrikesharp/gamedata/gamedata.json
 [ -n "$gamedata_file" ] && cp "$gamedata_file" "$gd"
+[ -n "$gamedata_cache" ] && cp -r "$gamedata_cache" "$(dirname "$gd")/cache"
 for f in "${gamedata_jq[@]}"; do
     jq "$f" "$gd" >"$gd.tmp" || die "gamedata jq filter failed: $f"
     mv "$gd.tmp" "$gd"
@@ -531,6 +537,7 @@ shutdown_exit=$server_exit
 cp "$native_log" "$out/counterstrikesharp-native.log" 2>/dev/null || true
 # As the server left it, to compare with gamedata.installed.json (the runtime never writes Gamedata).
 cp "$gd" "$out/gamedata.after-run.json" 2>/dev/null || true
+[ -d "$(dirname "$gd")/cache" ] && cp -r "$(dirname "$gd")/cache" "$out/gamedata-cache"
 if [ -d "$addons/counterstrikesharp/logs" ]; then
     cp -a "$addons/counterstrikesharp/logs" "$out/css-logs"
 fi

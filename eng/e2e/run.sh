@@ -182,7 +182,7 @@ build_native() {
     mkdir -p "$MIRROR/libraries"
     rsync -rlc --delete --exclude=/libraries/hl2sdk-cs2 --exclude=/configs/addons/metamod/ \
         --include='/CMakeLists.txt' --include='/makefiles/***' --include='/src/***' \
-        --include='/libraries/***' --include='/configs/***' --exclude='*' \
+        --include='/libraries/***' --include='/configs/***' --include='/patches/***' --exclude='*' \
         "$REPO/" "$MIRROR/"
     ln -sfn "$sdk" "$MIRROR/libraries/hl2sdk-cs2"
 

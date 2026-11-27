@@ -13,6 +13,9 @@
 # cache:      a second start after exact (its Gamedata cache installed) with the feed down: boots on the cached snapshot
 #             and reports it as cache; managed reads it too.
 # tampered+cache: the tampered feed on a second start: falls back to the cached snapshot and logs why.
+# carried-forward: the feed lists only the previous build X (SourceRevision - 1), whose snapshot kills
+#             game-system-events; X's snapshot is cached and the bundled file is unstamped (oldest): boots on X's Gamedata,
+#             and the kill stays in force, reported as carried forward from X.
 # https, malformed: an https:// or malformed GamedataFeedUrl boots on bundled with a warning, never aborts (#931).
 # blackhole:  a feed host that accepts connections and never answers: the feed step gives up at its 10 s deadline
 #             (CoreConfig loaded -> Gamedata line in the native log) and boots on bundled.
@@ -47,6 +50,17 @@ entries=$(jq '[.[] | objects] | length' "$snapshots/linux.json")
 python3 -I "$gamedata_repo/publisher/publish.py" publish --key "$gamedata_repo/publisher/test-key.pem" \
     --out "$work/feed" "$work/data" || exit 1 # first publish: seq 1
 cp -r "$work/feed" "$work/tampered"
+
+# The previous build's data repo, published alone; its snapshot cached as a server that ran on that build would have it.
+previous=$((revision - 1))
+mkdir -p "$work/data-previous/snapshots/$previous" "$work/carried-cache"
+echo '{"patchVersion": "0.0.0.1"}' >"$work/data-previous/snapshots/$previous/build.json"
+jq 'del(.sourceRevision) | .disabledEngineFeatures = [{"id": "cssharp.server/game-system-events", "reason": "e2e kill"}]' \
+    "$repo/configs/addons/counterstrikesharp/gamedata/gamedata.json" >"$work/data-previous/snapshots/$previous/linux.json" || exit 1
+python3 -I "$gamedata_repo/publisher/publish.py" publish --key "$gamedata_repo/publisher/test-key.pem" \
+    --out "$work/carried" "$work/data-previous" || exit 1
+cat "$work/carried/index.json.sig" "$work/carried/index.json" >"$work/carried-cache/index.signed"
+cp "$work/carried/snapshots/$previous/linux.json" "$work/carried-cache/$previous.linux.json"
 python3 -I -c 'import sys; p = sys.argv[1]; b = bytearray(open(p, "rb").read()); b[len(b) // 2] ^= 1; open(p, "wb").write(b)' \
     "$work/tampered/index.json"
 
@@ -104,6 +118,14 @@ case_run cache "$@" --no-smoke --gamedata-cache "$work/cache" --core-jq "$(feed 
 
 case_run tampered+cache "$@" --no-smoke --gamedata-cache "$work/cache" --core-jq "$(feed true "http://127.0.0.1:$port/tampered")" \
     --expect-log "Gamedata: $cached; warnings: index signature invalid \\(key de4a068ed7d94def\\)"
+
+previous_label="0\\.0\\.0\\.1 \\(SourceRevision $previous\\)"
+case_run carried-forward "$@" --no-smoke --gamedata-cache "$work/carried-cache" --gamedata-jq 'del(.sourceRevision)' \
+    --core-jq "$(feed true "http://127.0.0.1:$port/carried")" \
+    --expect-log "Gamedata: carried forward from build $previous_label in the Gamedata cache, seq 1, key de4a068ed7d94def; warnings: the Gamedata Feed has no snapshot for build $patch \\(SourceRevision $revision\\) on linux yet" \
+    --expect-log "^ +cssharp\\.server/game-system-events disabled \\(disabled by gamedata \\(carried forward from $previous_label\\): e2e kill\\)" \
+    --expect-log "^ +cssharp\\.server/game-system-events: e2e kill, carried forward from $previous_label\$" \
+    --expect-no-log 'Initialized GameSystem'
 
 for url in "https://127.0.0.1:$port/feed" "ftp://gamedata.cssharp.dev:99999999999"; do
     case_run "$url" "$@" --no-smoke --core-jq "$(feed true "$url")" \

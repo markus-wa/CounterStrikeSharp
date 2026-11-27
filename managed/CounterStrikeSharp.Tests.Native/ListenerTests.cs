@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using CounterStrikeSharp.API;
@@ -21,25 +22,20 @@ public class ListenerTests
             callCount++;
         });
 
-        NativeAPI.IssueServerCommand("bot_quota 0; bot_quota_mode normal");
-        await WaitOneFrame();
+        await ExecuteCommandAsync("bot_quota 0; bot_quota_mode normal");
 
         NativeAPI.AddListener("OnClientConnect", callback);
 
         // Test hooking
         NativeAPI.IssueServerCommand("bot_kick");
-        NativeAPI.IssueServerCommand("bot_add");
-        await WaitOneFrame();
-        await WaitOneFrame();
+        await ExecuteCommandAsync("bot_add");
 
         Assert.Equal(1, callCount);
         NativeAPI.RemoveListener("OnClientConnect", callback);
 
         // Test unhooking
         NativeAPI.IssueServerCommand("bot_kick");
-        NativeAPI.IssueServerCommand("bot_add");
-        await WaitOneFrame();
-        await WaitOneFrame();
+        await ExecuteCommandAsync("bot_add");
         Assert.Equal(1, callCount);
 
         NativeAPI.IssueServerCommand("bot_quota 1");
@@ -48,36 +44,25 @@ public class ListenerTests
     [Fact]
     public async Task EntityListenersAreFired()
     {
-        var createMock = new Mock<Action<IntPtr>>();
-        createMock.Setup(s => s(It.IsAny<IntPtr>())).Callback<IntPtr>((entityPtr) =>
-        {
-            var entity = new CBaseEntity(entityPtr);
-            Assert.Equal("prop_dynamic", entity.DesignerName);
-        });
-        var createCallback = FunctionReference.Create(createMock.Object);
-
-        var deleteMock = new Mock<Action<IntPtr>>();
-        deleteMock.Setup(s => s(It.IsAny<IntPtr>())).Callback<IntPtr>((entityPtr) =>
-        {
-            var entity = new CBaseEntity(entityPtr);
-            Assert.Equal("prop_dynamic", entity.DesignerName);
-        });
-        var deleteCallback = FunctionReference.Create(deleteMock.Object);
+        // The listeners fire for every entity: count only the test's own, other entities come and go in the same frames.
+        var created = new List<IntPtr>();
+        var deleted = new List<IntPtr>();
+        var createCallback = FunctionReference.Create((IntPtr entityPtr) => { created.Add(entityPtr); });
+        var deleteCallback = FunctionReference.Create((IntPtr entityPtr) => { deleted.Add(entityPtr); });
 
         try
         {
             NativeAPI.AddListener("OnEntityCreated", createCallback);
             NativeAPI.AddListener("OnEntityDeleted", deleteCallback);
 
-            var ent = Utilities.CreateEntityByName<CBaseModelEntity>("prop_dynamic");
-            await WaitOneFrame();
-
-            Assert.Single(createMock.Invocations);
+            var ent = Utilities.CreateEntityByName<CBaseModelEntity>("prop_dynamic")!;
+            var handle = ent.Handle;
+            await WaitUntilAsync(() => created.Contains(handle), "OnEntityCreated for the new entity");
+            Assert.Single(created, handle);
 
             ent.Remove();
-            await WaitOneFrame();
-
-            Assert.Single(deleteMock.Invocations);
+            await WaitUntilAsync(() => deleted.Contains(handle), "OnEntityDeleted for the removed entity");
+            Assert.Single(deleted, handle);
         }
         finally
         {
@@ -129,14 +114,17 @@ public class ListenerTests
         var convar = new ConVar<float>($"css_itest_cvar_{Guid.NewGuid():N}", "Test ConVar", 0);
 
         var mock = new Mock<Action>();
-        var methodCallback = FunctionReference.Create(() => { mock.Object.Invoke(); });
+        // The listener fires for every ConVar; commands left over from other tests change theirs too.
+        var methodCallback = FunctionReference.Create((ushort changedIndex) =>
+        {
+            if (new ConVarBase(changedIndex).AccessIndex == convar.AccessIndex) mock.Object.Invoke();
+        });
 
         try
         {
             NativeAPI.AddListener("OnConVarChanged", methodCallback);
             await WaitOneFrame();
-            NativeAPI.IssueServerCommand($"{convar.Name} 1");
-            await WaitOneFrame();
+            await ExecuteCommandAsync($"{convar.Name} 1");
             Assert.Single(mock.Invocations);
         }
         finally

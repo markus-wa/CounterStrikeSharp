@@ -111,9 +111,7 @@ public class ServerGameClientsTests
         NativeAPI.AddCommand(command, "client command probe", true, (int)ConCommandFlags.FCVAR_LINKED_CONCOMMAND, callback);
         try
         {
-            NativeAPI.IssueServerCommand(command);
-            await WaitOneFrame();
-            await WaitOneFrame();
+            await ExecuteCommandAsync(command);
         }
         finally
         {

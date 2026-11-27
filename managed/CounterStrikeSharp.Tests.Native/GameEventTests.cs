@@ -22,25 +22,20 @@ public class GameEventTests
 
         try
         {
-            NativeAPI.IssueServerCommand("bot_quota 0; bot_quota_mode normal");
-            await WaitOneFrame();
+            await ExecuteCommandAsync("bot_quota 0; bot_quota_mode normal");
 
             NativeAPI.HookEvent("player_connect", callback, true);
 
             // Test hooking
             NativeAPI.IssueServerCommand("bot_kick");
-            NativeAPI.IssueServerCommand("bot_add");
-            await WaitOneFrame();
-            await WaitOneFrame();
+            await ExecuteCommandAsync("bot_add");
 
             Assert.Equal(1, callCount);
             NativeAPI.UnhookEvent("player_connect", callback, true);
 
             // Test unhooking
             NativeAPI.IssueServerCommand("bot_kick");
-            NativeAPI.IssueServerCommand("bot_add");
-            await WaitOneFrame();
-            await WaitOneFrame();
+            await ExecuteCommandAsync("bot_add");
             Assert.Equal(1, callCount);
         }
         finally

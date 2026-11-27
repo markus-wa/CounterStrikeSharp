@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Modules.Commands;
 using NativeTestsPlugin;
 using Xunit;
 
@@ -12,6 +13,31 @@ public static class TestUtils
     public static async Task WaitOneFrame()
     {
         await Server.NextFrameAsync(() => { }).ConfigureAwait(false);
+    }
+
+    private static int _barriersIssued, _barriersRun;
+    private static FunctionReference? _commandBarrier;
+
+    private static FunctionReference AddCommandBarrier()
+    {
+        var barrier = FunctionReference.Create(() => { _barriersRun++; });
+        NativeAPI.AddCommand("css_itest_command_barrier", "Test barrier: every command queued before it has run.", true,
+            (int)ConCommandFlags.FCVAR_LINKED_CONCOMMAND, barrier);
+        return barrier;
+    }
+
+    /// <summary>
+    /// Runs <paramref name="command"/> through the server's command buffer and waits until it ran. The engine runs the
+    /// buffer once per host frame, and a host frame that catches up after a long frame runs several game frames
+    /// back to back: waiting a number of game frames is not enough.
+    /// </summary>
+    public static async Task ExecuteCommandAsync(string command, double timeoutSeconds = 10)
+    {
+        _commandBarrier ??= AddCommandBarrier();
+        var barrier = ++_barriersIssued;
+        Server.ExecuteCommand(command);
+        Server.ExecuteCommand("css_itest_command_barrier");
+        await WaitUntilAsync(() => _barriersRun >= barrier, $"server command '{command}' to run", timeoutSeconds);
     }
 
     public static async Task WaitUntilAsync(Func<bool> condition, string description, double timeoutSeconds = 10)

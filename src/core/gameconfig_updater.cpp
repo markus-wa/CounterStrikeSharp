@@ -3,6 +3,7 @@
 #include "core/coreconfig.h"
 #include "core/log.h"
 #include "core/globals.h"
+#include "core/http_client.h"
 
 #include <string>
 #include <fstream>
@@ -24,13 +25,20 @@ bool TryUpdateGameConfig()
     auto gamedata_path = std::string(utils::GamedataDirectory() + "/gamedata.json");
     auto etag_path = std::string(utils::GamedataDirectory() + "/gamedata.etag");
 
-    httplib::Client client(globals::coreConfig->AutoUpdateURL);
-    client.set_follow_location(true);
-    client.set_read_timeout(10, 0);
+    std::string error;
+    const auto client = http::MakeClient(globals::coreConfig->AutoUpdateURL, error);
+    if (!client)
+    {
+        CSSHARP_CORE_ERROR("AutoUpdateURL: {}", error);
+        return false;
+    }
+    client->set_follow_location(true);
+    client->set_read_timeout(10, 0);
 
-    auto headRes = client.Head("/");
+    auto headRes = client->Head("/");
     if (!headRes || headRes->status != 200)
     {
+        CSSHARP_CORE_ERROR("Failed to connect to the auto update server at: {}", globals::coreConfig->AutoUpdateURL);
         return false;
     }
 
@@ -52,7 +60,7 @@ bool TryUpdateGameConfig()
         return true;
     }
 
-    auto res = client.Get("/");
+    auto res = client->Get("/");
     if (res && res->status == 200)
     {
         auto etag = res->get_header_value("ETag");

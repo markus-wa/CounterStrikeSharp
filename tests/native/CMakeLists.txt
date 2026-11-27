@@ -33,6 +33,7 @@ set(CSSHARP_TESTED_SOURCES
     ${CSSHARP_ROOT}/src/core/rtti_vtable.cpp
     ${CSSHARP_ROOT}/src/core/vtable_fingerprint.cpp
     ${CSSHARP_ROOT}/src/core/elf_relocations.cpp
+    ${CSSHARP_ROOT}/src/core/http_client.cpp
 )
 
 set(CSSHARP_TEST_SOURCES
@@ -51,6 +52,7 @@ set(CSSHARP_TEST_SOURCES
     real_binary_test.cpp
     engine_server_test.cpp
     contract_test.cpp
+    http_client_test.cpp
 )
 
 # Vendored x86-64 decoder (plain files, no submodule); the plugin tree may have added it already.

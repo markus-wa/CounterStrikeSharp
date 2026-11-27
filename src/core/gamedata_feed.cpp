@@ -396,6 +396,26 @@ FetchedIndex FetchIndex(const http::Transport& transport, const std::string& bas
     return fetched;
 }
 
+// The feed as one boot or poll sees it.
+struct FeedView
+{
+    std::string base; // the feed URL without trailing slashes
+    fs::path cache; // empty: no cache
+    std::optional<Index> stored; // the cached index, re-verified
+    FetchedIndex fetched; // the feed's index, verified and not below the stored seq or the release's floor
+};
+
+// Reads the cached index and asks the feed for its own (conditionally on etag); failures are warnings.
+FeedView ReadFeed(const GamedataSourceInputs& inputs, const std::string& etag, std::vector<std::string>& warnings)
+{
+    FeedView feed{ FeedBase(inputs.feedUrl), inputs.gamedataDir.empty() ? fs::path() : inputs.gamedataDir / kCacheDir };
+    const auto keys = TrustedKeys(inputs.publicKeys, warnings);
+    feed.stored = StoredIndex(feed.cache, keys, warnings);
+    const auto floor = std::max(inputs.seqFloor, feed.stored ? feed.stored->seq : 0);
+    feed.fetched = FetchIndex(*inputs.transport, feed.base, keys, floor, etag, warnings);
+    return feed;
+}
+
 // Makes the fetched index the cached one (the seq state) unless it already is.
 void CacheIndex(const fs::path& cache, const std::optional<Index>& stored, const Index& fetched, std::vector<std::string>& warnings)
 {
@@ -463,13 +483,9 @@ ChosenGamedata Choose(const GamedataSourceInputs& inputs, std::vector<std::strin
         return bundled;
     }
 
-    const auto base = FeedBase(inputs.feedUrl);
-    const auto keys = TrustedKeys(inputs.publicKeys, warnings);
-    const auto cache = inputs.gamedataDir.empty() ? fs::path() : inputs.gamedataDir / kCacheDir;
-
-    const auto stored = StoredIndex(cache, keys, warnings);
-    const auto fetched =
-        FetchIndex(*inputs.transport, base, keys, std::max(inputs.seqFloor, stored ? stored->seq : 0), "", warnings).index;
+    const auto feed = ReadFeed(inputs, "", warnings);
+    const auto& [base, cache, stored, fetchedIndex] = feed;
+    const auto& fetched = fetchedIndex.index;
     if (fetched) CacheIndex(cache, stored, *fetched, warnings);
 
     const Index* index = fetched ? &*fetched : stored ? &*stored : nullptr;
@@ -579,12 +595,8 @@ PollResult PollGamedataFeed(const GamedataSourceInputs& inputs, std::string_view
     if (inputs.transport == nullptr || inputs.gamedataDir.empty() || !Revision(revision)) return result;
     try
     {
-        const auto base = FeedBase(inputs.feedUrl);
-        const auto keys = TrustedKeys(inputs.publicKeys, result.warnings);
-        const auto cache = inputs.gamedataDir / kCacheDir;
-        const auto stored = StoredIndex(cache, keys, result.warnings);
-        const auto fetched =
-            FetchIndex(*inputs.transport, base, keys, std::max(inputs.seqFloor, stored ? stored->seq : 0), etag, result.warnings);
+        const auto feed = ReadFeed(inputs, etag, result.warnings);
+        const auto& [base, cache, stored, fetched] = feed;
         result.etag = fetched.etag;
         if (!fetched.index) return result;
 

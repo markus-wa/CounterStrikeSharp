@@ -10,16 +10,10 @@ CGameConfig::~CGameConfig() = default;
 
 bool CGameConfig::InitFromBytes(std::string_view bytes, char* conf_error, int conf_error_size)
 {
-#if _WIN32
-    constexpr auto platform = "windows";
-#else
-    constexpr auto platform = "linux";
-#endif
-
     try
     {
         // Core Bindings are resolved from this alone (core/core_bindings.h), which also reports any key it cannot use.
-        m_gamedata = bindings::ParseGamedataBytes(bytes, platform);
+        m_gamedata = bindings::ParseGamedataBytes(bytes, kGamedataOs);
     }
     catch (const std::exception& ex)
     {

@@ -104,11 +104,7 @@ bool LoadCoreGamedata(std::string& error)
     inputs.feedUrl = globals::coreConfig->GamedataFeedUrl;
     inputs.publicKeys = globals::coreConfig->GamedataFeedPublicKeys;
     inputs.build = bindings::ReadBuildIdentity();
-#ifdef _WIN32
-    inputs.os = "windows";
-#else
-    inputs.os = "linux";
-#endif
+    inputs.os = kGamedataOs;
     inputs.bundled.assign(std::istreambuf_iterator<char>(bundled), std::istreambuf_iterator<char>());
     inputs.gamedataDir = utils::GamedataDirectory();
     inputs.seqFloor = CSSHARP_GAMEDATA_SEQ_FLOOR;

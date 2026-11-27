@@ -6,12 +6,20 @@
 #include <tier0/keyvalues.h>
 
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 #undef snprintf
 #include <nlohmann/json.hpp>
 
 namespace counterstrikesharp {
+
+// This OS's key in Gamedata ("signatures.<os>", "offsets.<os>", the feed's per-OS snapshots).
+#ifdef _WIN32
+inline constexpr std::string_view kGamedataOs = "windows";
+#else
+inline constexpr std::string_view kGamedataOs = "linux";
+#endif
 
 class CGameConfig
 {

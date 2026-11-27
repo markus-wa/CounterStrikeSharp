@@ -313,6 +313,32 @@ TEST_CASE("A signed index with a seq of 2^63 or more is rejected")
     CHECK(AnyWarningContains(chosen.provenance, "index unreadable: seq 9223372036854775808 is not below 2^63"));
 }
 
+// Published snapshots are content-addressed: each edit gets a new file name, whatever the index names is fetched.
+TEST_CASE("The snapshot is fetched from the path the signed index names, which must stay inside the feed")
+{
+    const auto withFile = [](const std::string& file) {
+        auto root = nlohmann::json::parse(IndexFor(kSnapshot));
+        root["builds"]["11268945"]["linux"]["file"] = file;
+        const auto index = root.dump(2);
+        auto transport = Feed(index, kBuiltinTestKey.Sign(index));
+        transport.files[kFeedUrl + "/" + file] = kSnapshot;
+        return transport;
+    };
+
+    const auto hashed = withFile("snapshots/11268945/linux.0123456789abcdef.json");
+    CHECK(feed::ChooseGamedata(Inputs(&hashed)).bytes == kSnapshot);
+
+    for (const std::string file : { "../snapshots/11268945/linux.json", "snapshots/../../linux.json", "/snapshots/11268945/linux.json",
+                                    "http://evil.test/linux.json", "snapshots//linux.json", "snapshots\\11268945\\linux.json", "" })
+    {
+        CAPTURE(file);
+        const auto escaping = withFile(file);
+        const auto chosen = feed::ChooseGamedata(Inputs(&escaping));
+        CHECK(chosen.bytes == kBundled);
+        CHECK(AnyWarningContains(chosen.provenance, "snapshot path \"" + file + "\" in the signed index is not a relative path, refused"));
+    }
+}
+
 // The caps are the spec's (index 64 KiB, signature 256 B, snapshot 1 MiB), the same on both OSes.
 TEST_CASE("A feed file over its download cap boots on bundled with a warning, on Linux and Windows")
 {

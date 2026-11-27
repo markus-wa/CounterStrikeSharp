@@ -8,7 +8,8 @@
 //                      "builds": { "<SourceRevision>": { "patchVersion": "<label>",
 //                                                        "<os>": { "file": "<path>", "size": <bytes>, "sha256": "<hex>" } } } }
 //   index.json.sig   72 bytes: key id (8) + Ed25519 signature (64) over kIndexSignaturePrefix + index.json's raw bytes
-//   <file>           a Gamedata Snapshot: the complete Gamedata for that build and OS
+//   <file>           a Gamedata Snapshot: the complete Gamedata for that build and OS; a relative path (the publisher
+//                    names it by content, so a published snapshot never changes)
 // Signer: the data repo's publisher (cssharp-gamedata publisher/publish.py).
 //
 // The bundled gamedata.json carries a top-level "sourceRevision": "<SourceRevision>" stamp: the build it was made for.

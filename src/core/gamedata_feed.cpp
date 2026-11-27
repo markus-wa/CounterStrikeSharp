@@ -32,7 +32,8 @@ namespace {
 namespace fs = std::filesystem;
 
 // The Gamedata cache, in <gamedata dir>/cache: the latest accepted index as kCachedIndex (its signature file followed by
-// its bytes, so one atomic write keeps the pair consistent) and one immutable <SourceRevision>.<os>.json per build and OS.
+// its bytes, so one atomic write keeps the pair consistent) and one <SourceRevision>.<os>.json per build and OS, the
+// snapshot that index vouches for. A newer snapshot for the same build replaces it by an atomic write, never in place.
 constexpr std::string_view kCacheDir = "cache";
 constexpr std::string_view kCachedIndex = "index.signed";
 constexpr std::string_view kTempSuffix = ".tmp";
@@ -213,10 +214,29 @@ bool Matches(std::string_view snapshot, const SnapshotEntry& entry)
     return snapshot.size() == entry.size && ToHex(digest.data(), digest.size()) == entry.sha256;
 }
 
+// A path below the feed URL: "/"-separated names, none empty, "." or "..", no scheme, drive or backslash.
+bool IsRelativePath(std::string_view path)
+{
+    if (path.find_first_of(":\\") != std::string_view::npos) return false;
+    for (std::size_t start = 0;;)
+    {
+        const auto end = std::min(path.find('/', start), path.size());
+        const auto name = path.substr(start, end - start);
+        if (name.empty() || name == "." || name == "..") return false;
+        if (end == path.size()) return true;
+        start = end + 1;
+    }
+}
+
 // The verified snapshot for entry, or none with the reason in error.
 std::optional<std::string> FetchSnapshot(const http::Transport& transport, const std::string& base, const SnapshotEntry& entry,
                                          const std::string& os, std::string& error)
 {
+    if (!IsRelativePath(entry.file))
+    {
+        error = "snapshot path \"" + entry.file + "\" in the signed index is not a relative path, refused";
+        return std::nullopt;
+    }
     auto snapshot = Fetch(transport, base + "/" + entry.file, kSnapshotCap, error);
     if (!error.empty()) return std::nullopt;
     if (!Matches(snapshot, entry))

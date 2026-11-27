@@ -4,7 +4,7 @@
 // gamedata.json. Pure: the network comes in through an http::Transport, so tests run it against fakes.
 //
 // Feed layout, relative to the feed URL:
-//   index.json       { "seq": <uint>, "issued_at": "<iso time>",
+//   index.json       { "seq": <uint below 2^63>, "issued_at": "<iso time>",
 //                      "builds": { "<SourceRevision>": { "patchVersion": "<label>",
 //                                                        "<os>": { "file": "<path>", "size": <bytes>, "sha256": "<hex>" } } } }
 //   index.json.sig   72 bytes: key id (8) + Ed25519 signature (64) over kIndexSignaturePrefix + index.json's raw bytes

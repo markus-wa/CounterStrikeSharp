@@ -295,6 +295,24 @@ TEST_CASE("An unreachable feed or a malformed signed index boots on bundled with
     }
 }
 
+// seq stays below 2^63, so it fits every signed 64-bit integer that may hold it (the managed provenance, JSON readers).
+TEST_CASE("A signed index with a seq of 2^63 or more is rejected")
+{
+    const auto withSeq = [](const std::string& seq) {
+        auto index = IndexFor(kSnapshot);
+        index.replace(index.find("\"seq\": 7"), 8, "\"seq\": " + seq);
+        return Feed(index, kBuiltinTestKey.Sign(index));
+    };
+
+    const auto largest = withSeq("9223372036854775807");
+    CHECK(feed::ChooseGamedata(Inputs(&largest)).provenance.seq == 9223372036854775807ull);
+
+    const auto tooLarge = withSeq("9223372036854775808");
+    const auto chosen = feed::ChooseGamedata(Inputs(&tooLarge));
+    CHECK(chosen.bytes == kBundled);
+    CHECK(AnyWarningContains(chosen.provenance, "index unreadable: seq 9223372036854775808 is not below 2^63"));
+}
+
 // The caps are the spec's (index 64 KiB, signature 256 B, snapshot 1 MiB), the same on both OSes.
 TEST_CASE("A feed file over its download cap boots on bundled with a warning, on Linux and Windows")
 {

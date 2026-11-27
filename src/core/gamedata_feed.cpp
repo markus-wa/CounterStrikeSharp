@@ -7,6 +7,7 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -50,6 +51,9 @@ constexpr std::size_t kSignatureSize = 64;
 constexpr std::size_t kIndexCap = 64 * 1024;
 constexpr std::size_t kSignatureCap = 256;
 constexpr std::size_t kSnapshotCap = 1024 * 1024;
+
+// seq stays below 2^63 (the publisher never signs more), so every signed 64-bit reader of it agrees.
+constexpr std::uint64_t kMaxSeq = std::numeric_limits<std::int64_t>::max();
 
 std::string ToHex(const std::uint8_t* bytes, std::size_t size)
 {
@@ -173,6 +177,7 @@ std::optional<Index> AcceptIndex(std::string bytes, std::string signature, const
     {
         index.root = nlohmann::json::parse(index.bytes);
         index.seq = index.root.at("seq").get<std::uint64_t>();
+        if (index.seq > kMaxSeq) throw std::invalid_argument("seq " + std::to_string(index.seq) + " is not below 2^63");
         if (!index.root.at("builds").is_object()) throw std::invalid_argument("\"builds\" is not an object");
     }
     catch (const std::exception& ex)

@@ -574,16 +574,40 @@ TEST_CASE("With no snapshot for this build, the newest of the cached snapshots a
     {
         CHECK(Boot(feed, dir, "200", Stamped("120")).bytes == SnapshotOf("150"));
     }
-    SUBCASE("a newer bundled file beats an older cached snapshot")
+    SUBCASE("a newer bundled file beats an older cached snapshot, and is carried forward from its build")
     {
         const auto chosen = Boot(feed, dir, "200", Stamped("180"));
         CHECK(chosen.bytes == Stamped("180"));
-        CHECK(chosen.provenance.source == feed::GamedataSource::Bundled);
+        CHECK(chosen.provenance.source == feed::GamedataSource::CarriedForward);
+        CHECK_FALSE(chosen.provenance.cached);
+        CHECK(feed::FormatProvenance(chosen.provenance) ==
+              "Gamedata: carried forward from build unknown (SourceRevision 180) in the bundled gamedata.json; "
+              "warnings: the Gamedata Feed has no snapshot for build 1.0.200 (SourceRevision 200) on linux yet");
     }
     SUBCASE("with the feed down too")
     {
         CHECK(Boot(kFeedDown, dir, "200").bytes == SnapshotOf("150"));
     }
+}
+
+TEST_CASE("The bundled file is carried forward from the build it is stamped with, unless that is this build or it has no stamp")
+{
+    const auto bundled = [](const std::string& bytes, const std::string& revision) {
+        auto inputs = Inputs(nullptr);
+        inputs.build = { "1.0." + revision, revision };
+        inputs.bundled = bytes;
+        return feed::ChooseGamedata(inputs).provenance;
+    };
+
+    const auto other = bundled(Stamped("180"), "200");
+    CHECK(other.source == feed::GamedataSource::CarriedForward);
+    CHECK(other.build == "unknown (SourceRevision 180)");
+    CHECK_FALSE(other.seq);
+    CHECK(feed::FormatProvenance(other) == "Gamedata: carried forward from build unknown (SourceRevision 180) in the bundled gamedata.json");
+
+    CHECK(bundled(Stamped("200"), "200").source == feed::GamedataSource::Bundled);
+    CHECK(bundled(kBundled, "200").source == feed::GamedataSource::Bundled);
+    CHECK(bundled(Stamped("180"), "unknown").source == feed::GamedataSource::Bundled);
 }
 
 TEST_CASE("Kill Switches carry forward: a kill in build X stays in force on build Y until Y has its own snapshot")
@@ -607,6 +631,13 @@ TEST_CASE("Kill Switches carry forward: a kill in build X stays in force on buil
 
     const auto published = FeedOf(2, { "100", "200" }, { { "100", killed } });
     CHECK(Boot(published, dir, "200").provenance.killSwitches.empty());
+
+    // Also from a bundled file stamped with X.
+    const auto stampedX = R"({ "sourceRevision": "100", )" + killed.substr(1);
+    const auto fromBundled = Boot(kFeedDown, GamedataDir(), "300", stampedX).provenance;
+    REQUIRE(fromBundled.killSwitches.size() == 1);
+    CHECK(fromBundled.source == feed::GamedataSource::CarriedForward);
+    CHECK(fromBundled.build == "unknown (SourceRevision 100)");
 }
 
 TEST_CASE("The bundled gamedata.json is stamped with its build, so it beats a cached older build")

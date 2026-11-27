@@ -437,10 +437,24 @@ ChosenGamedata FromIndex(std::string bytes, GamedataSource source, bool cached, 
     return chosen;
 }
 
+// The bundled file: carried forward from the build it is stamped with when that is known and not this build.
+ChosenGamedata FromBundled(const GamedataSourceInputs& inputs)
+{
+    ChosenGamedata chosen{ inputs.bundled, {} };
+    const auto stamp = BundledRevision(inputs.bundled);
+    const auto revision = Revision(inputs.build.sourceRevision);
+    if (stamp && revision && *stamp != *revision)
+    {
+        chosen.provenance.source = GamedataSource::CarriedForward;
+        chosen.provenance.build = bindings::BuildIdentity{ "unknown", std::to_string(*stamp) }.Label();
+    }
+    return chosen;
+}
+
 // The selection of ChooseGamedata with the feed on; the reasons for skipping a step are appended to warnings.
 ChosenGamedata Choose(const GamedataSourceInputs& inputs, std::vector<std::string>& warnings)
 {
-    const ChosenGamedata bundled{ inputs.bundled, {} };
+    const auto bundled = FromBundled(inputs);
     const auto& revision = inputs.build.sourceRevision;
     if (!Revision(revision))
     {
@@ -539,7 +553,7 @@ ChosenGamedata ChooseGamedata(const GamedataSourceInputs& inputs)
         PruneCache(inputs.gamedataDir / kCacheDir);
     }
 
-    ChosenGamedata chosen{ inputs.bundled, {} };
+    auto chosen = FromBundled(inputs);
     if (inputs.transport != nullptr)
     {
         try
@@ -548,7 +562,7 @@ ChosenGamedata ChooseGamedata(const GamedataSourceInputs& inputs)
         }
         catch (const std::exception& ex)
         {
-            chosen = { inputs.bundled, {} };
+            chosen = FromBundled(inputs);
             warnings.push_back(std::string("Gamedata Feed index unreadable: ") + ex.what());
         }
     }
@@ -612,7 +626,8 @@ std::string FormatProvenance(const Provenance& provenance)
                            ? "Gamedata: exact build " + provenance.build + " from the Gamedata " +
                                  (provenance.cached ? "cache" : "Feed") + vouched
                        : provenance.source == GamedataSource::CarriedForward
-                           ? "Gamedata: carried forward from build " + provenance.build + " in the Gamedata cache" + vouched
+                           ? "Gamedata: carried forward from build " + provenance.build +
+                                 (provenance.cached ? " in the Gamedata cache" + vouched : " in the bundled gamedata.json")
                            : "Gamedata: bundled gamedata.json";
     for (std::size_t i = 0; i < provenance.warnings.size(); ++i)
         text += (i == 0 ? "; warnings: " : "; ") + provenance.warnings[i];

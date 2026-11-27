@@ -43,19 +43,21 @@ std::string KeyId(const PublicKey& key);
 
 enum class GamedataSource
 {
-    Bundled, // the bundled gamedata.json
+    Bundled, // the bundled gamedata.json, stamped with this build or not at all
     ExactBuild, // the feed's Gamedata Snapshot for exactly this build and OS, fetched this boot or cached
-    CarriedForward, // the newest cached snapshot of another build: the feed has none for this build (yet)
+    // The newest Gamedata of another build, a cached snapshot or the bundled file stamped with it: the feed has none for
+    // this build (yet).
+    CarriedForward,
 };
 
 // Where the boot's Gamedata came from, for the startup report.
 struct Provenance
 {
     GamedataSource source = GamedataSource::Bundled;
-    bool cached = false; // read from the Gamedata cache, not fetched this boot (always for CarriedForward)
+    bool cached = false; // read from the Gamedata cache, not fetched this boot
     std::string build; // the snapshot's build label: this build (ExactBuild) or the one carried forward from; empty for Bundled
-    std::optional<std::uint64_t> seq; // the seq of the signed index that vouches for the snapshot (not Bundled)
-    std::string keyId; // the key that signed that index (not Bundled)
+    std::optional<std::uint64_t> seq; // the seq of the signed index that vouches for the snapshot (none for the bundled file)
+    std::string keyId; // the key that signed that index (empty for the bundled file)
     // The chosen Gamedata's "disabledEngineFeatures" (see bindings::ParseKillSwitches), none forced. Carried forward with
     // the snapshot: they stay in force until this build has its own snapshot.
     std::vector<bindings::EngineFeatureKill> killSwitches;
@@ -89,8 +91,10 @@ struct ChosenGamedata
 // With the feed on, in order:
 //   1. the snapshot for exactly this build and OS, cached or fetched, that matches the signed index's size and sha256;
 //   2. otherwise the newest by SourceRevision of the cached snapshots that match the signed index and the bundled file
-//      (an unstamped bundled file counts as oldest): a cached one is reported as carried forward;
+//      (an unstamped bundled file counts as oldest), reported as carried forward from its build;
 //   3. otherwise the bundled bytes.
+// The bundled file, whichever step picks it, is carried forward from the build it is stamped with when that is not
+// this build (with the feed off too), else Bundled.
 // The signed index is the fetched one when its seq is not below the cached index's or seqFloor (rollback), else the
 // cached one. The reasons for skipping a step are provenance warnings. No index byte is parsed before its signature
 // verifies and no snapshot byte before its hash matches, cached files included. Accepted indexes and verified snapshots
@@ -129,7 +133,9 @@ PollResult PollGamedataFeed(const GamedataSourceInputs& inputs, std::string_view
 
 // One line, e.g. "Gamedata: exact build 1.42.0.1 (SourceRevision 11268945) from the Gamedata Feed, seq 7, key
 // de4a068ed7d94def", "Gamedata: carried forward from build 1.41.9.7 (SourceRevision 11228971) in the Gamedata cache, seq
-// 7, key de4a068ed7d94def" or "Gamedata: bundled gamedata.json; warnings: index signature invalid".
+// 7, key de4a068ed7d94def", "Gamedata: carried forward from build unknown (SourceRevision 11228971) in the bundled
+// gamedata.json" (the stamp names no PatchVersion) or "Gamedata: bundled gamedata.json; warnings: index signature
+// invalid".
 std::string FormatProvenance(const Provenance& provenance);
 
 // The provenance in the Resolution Report (managed reads it as EngineFeatures.Gamedata):

@@ -25,6 +25,23 @@
 #include "core/log.h"
 
 namespace counterstrikesharp {
+namespace {
+
+// The key's list of strings; none when it is absent or null, or (with a warning ending in fallback) not such a list.
+std::optional<std::vector<std::string>>
+ReadStringList(const nlohmann::json& config, const char* key, const char* what, const char* fallback)
+{
+    const auto value = config.find(key);
+    if (value == config.end() || value->is_null()) return std::nullopt;
+    if (value->is_array() && std::all_of(value->begin(), value->end(), [](const nlohmann::json& item) {
+            return item.is_string();
+        }))
+        return value->get<std::vector<std::string>>();
+    CSSHARP_CORE_WARN("CoreConfig {} {} is not a list of {}, {}", key, value->dump(), what, fallback);
+    return std::nullopt;
+}
+
+} // namespace
 
 CCoreConfig::CCoreConfig(const std::string& path) { m_sPath = path; }
 
@@ -106,17 +123,8 @@ void CCoreConfig::ReadOperatorSettings()
             CSSHARP_CORE_WARN("CoreConfig HealEnabled {} is not true or false, using true", heal->dump());
     }
 
-    ForceEnableEngineFeatures.clear();
-    if (const auto force = m_json.find("ForceEnableEngineFeatures"); force != m_json.end() && !force->is_null())
-    {
-        const bool valid = force->is_array() && std::all_of(force->begin(), force->end(), [](const json& id) {
-            return id.is_string();
-        });
-        if (valid) ForceEnableEngineFeatures = force->get<std::vector<std::string>>();
-        else
-            CSSHARP_CORE_WARN("CoreConfig ForceEnableEngineFeatures {} is not a list of Engine Feature names, forcing none on",
-                              force->dump());
-    }
+    ForceEnableEngineFeatures =
+        ReadStringList(m_json, "ForceEnableEngineFeatures", "Engine Feature names", "forcing none on").value_or(std::vector<std::string>{});
 
     GamedataFeedPollMinutes = 15;
     if (const auto poll = m_json.find("GamedataFeedPollMinutes"); poll != m_json.end() && !poll->is_null())
@@ -127,16 +135,7 @@ void CCoreConfig::ReadOperatorSettings()
             CSSHARP_CORE_WARN("CoreConfig GamedataFeedPollMinutes {} is not a whole number of minutes (0 or more), using 15", poll->dump());
     }
 
-    GamedataFeedPublicKeys.reset();
-    if (const auto keys = m_json.find("GamedataFeedPublicKeys"); keys != m_json.end() && !keys->is_null())
-    {
-        const bool valid = keys->is_array() && std::all_of(keys->begin(), keys->end(), [](const json& key) {
-            return key.is_string();
-        });
-        if (valid) GamedataFeedPublicKeys = keys->get<std::vector<std::string>>();
-        else
-            CSSHARP_CORE_WARN("CoreConfig GamedataFeedPublicKeys {} is not a list of public keys, using the built-in keys", keys->dump());
-    }
+    GamedataFeedPublicKeys = ReadStringList(m_json, "GamedataFeedPublicKeys", "public keys", "using the built-in keys");
 }
 
 const std::string CCoreConfig::GetPath() const { return m_sPath; }

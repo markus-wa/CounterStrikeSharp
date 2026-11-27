@@ -42,7 +42,7 @@ _Avoid_: auto-updater, CDN, gamedata server
 
 **Gamedata Snapshot**:
 The complete Gamedata for one CS2 build (by `SourceRevision`) and one OS, as published in the Gamedata Feed. Immutable; never a delta.
-_Avoid_: gamedata update, patch
+_Avoid_: gamedata update, patch. One accepted exception: the public listener `OnGamedataUpdateAvailable` (spec C) keeps that name because it is a plugin-facing API named by the spec. Read it as "a newer Gamedata Snapshot for this build is available"; don't use "gamedata update" anywhere else.
 
 **Kill Switch**:
 A deliberate entry in the Gamedata Feed that disables one Binding (blank value) or one Engine Feature (by id, with a reason) on a build, so a known crash becomes "feature off" without a release.

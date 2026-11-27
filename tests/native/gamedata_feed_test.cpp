@@ -1,8 +1,10 @@
 #include <doctest.h>
 
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -376,4 +378,287 @@ TEST_CASE("A feed signed by the Python signer verifies natively, and a mutated o
         CAPTURE(name);
         CHECK(feed::ChooseGamedata(Inputs(&mutated)).bytes == kBundled);
     }
+}
+
+// Cache, carry-forward and rollback: boots share a Gamedata directory, as successive server starts do.
+namespace {
+
+struct GamedataDir
+{
+    std::filesystem::path path =
+        std::filesystem::temp_directory_path() / ("cssharp-gamedata-test-" + std::to_string(std::random_device{}()));
+
+    GamedataDir() { std::filesystem::create_directories(path); }
+    ~GamedataDir() { std::filesystem::remove_all(path); }
+};
+
+feed::GamedataSourceInputs Inputs(const http::Transport* transport, const GamedataDir& dir)
+{
+    auto inputs = Inputs(transport);
+    inputs.gamedataDir = dir.path;
+    return inputs;
+}
+
+const FakeTransport kFeedDown;
+
+std::string SnapshotOf(const std::string& revision) { return R"({ "Build)" + revision + R"(": { "offsets": { "linux": 1 } } })"; }
+
+// A feed signed with the built-in key at seq, listing for each SourceRevision a linux snapshot (SnapshotOf by default).
+FakeTransport FeedOf(std::uint64_t seq, const std::vector<std::string>& revisions, const std::map<std::string, std::string>& snapshots = {})
+{
+    nlohmann::json index;
+    index["seq"] = seq;
+    index["issued_at"] = "2026-11-27T00:00:00Z";
+    index["builds"] = nlohmann::json::object();
+    FakeTransport transport;
+    for (const auto& revision : revisions)
+    {
+        const auto snapshot = snapshots.contains(revision) ? snapshots.at(revision) : SnapshotOf(revision);
+        const auto file = "snapshots/" + revision + "/linux.json";
+        index["builds"][revision]["patchVersion"] = "1.0." + revision;
+        index["builds"][revision]["linux"] = { { "file", file }, { "size", snapshot.size() }, { "sha256", Hex(Sha256(snapshot)) } };
+        transport.files[kFeedUrl + "/" + file] = snapshot;
+    }
+    const auto bytes = index.dump(2);
+    transport.files[kFeedUrl + "/index.json"] = bytes;
+    transport.files[kFeedUrl + "/index.json.sig"] = kBuiltinTestKey.Sign(bytes);
+    return transport;
+}
+
+// One server start on build `revision` sharing dir with earlier ones.
+feed::ChosenGamedata Boot(const http::Transport& transport, const GamedataDir& dir, const std::string& revision,
+                          const std::string& bundled = kBundled, std::uint64_t seqFloor = 0)
+{
+    auto inputs = Inputs(&transport, dir);
+    inputs.build = { "1.0." + revision, revision };
+    inputs.bundled = bundled;
+    inputs.seqFloor = seqFloor;
+    return feed::ChooseGamedata(inputs);
+}
+
+std::string Stamped(const std::string& revision)
+{
+    return R"({ "sourceRevision": ")" + revision + R"(", "Bundled": { "offsets": { "linux": 3 } } })";
+}
+
+// Flips one byte of every file under dir that contains needle, as disk corruption or a hand edit would.
+void TamperFilesContaining(const GamedataDir& dir, const std::string& needle)
+{
+    for (const auto& file : std::filesystem::recursive_directory_iterator(dir.path))
+    {
+        if (!file.is_regular_file()) continue;
+        std::string bytes;
+        {
+            std::ifstream in(file.path(), std::ios::binary);
+            bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        }
+        if (bytes.find(needle) == std::string::npos) continue;
+        std::ofstream(file.path(), std::ios::binary | std::ios::trunc) << Flip(bytes, bytes.size() - 3);
+    }
+}
+
+} // namespace
+
+TEST_CASE("With the feed down, the cached snapshot for exactly this build is booted on and reported as cache")
+{
+    const GamedataDir dir;
+    const auto feed = SignedFeed();
+    REQUIRE(feed::ChooseGamedata(Inputs(&feed, dir)).provenance.source == feed::GamedataSource::ExactBuild);
+
+    const auto chosen = feed::ChooseGamedata(Inputs(&kFeedDown, dir));
+    CHECK(chosen.bytes == kSnapshot);
+    CHECK(chosen.provenance.source == feed::GamedataSource::ExactBuild);
+    CHECK(feed::FormatProvenance(chosen.provenance) ==
+          "Gamedata: exact build 1.42.0.1 (SourceRevision 11268945) from the Gamedata cache, seq 7, key de4a068ed7d94def; warnings: "
+          "Gamedata Feed unreachable: http://feed.test/gamedata/index.json: 404 Not Found");
+}
+
+TEST_CASE("The snapshot for exactly this build beats a newer cached build")
+{
+    const GamedataDir dir;
+    const auto feed = FeedOf(1, { "100", "200", "300" });
+    Boot(feed, dir, "300");
+
+    const auto chosen = Boot(feed, dir, "200");
+    CHECK(chosen.bytes == SnapshotOf("200"));
+    CHECK(feed::FormatProvenance(chosen.provenance) ==
+          "Gamedata: exact build 1.0.200 (SourceRevision 200) from the Gamedata Feed, seq 1, key de4a068ed7d94def");
+}
+
+TEST_CASE("With no snapshot for this build, the newest of the cached snapshots and the bundled file is carried forward")
+{
+    const GamedataDir dir;
+    const auto feed = FeedOf(1, { "100", "150" });
+    Boot(feed, dir, "100");
+    Boot(feed, dir, "150");
+
+    SUBCASE("a newer cached snapshot beats a bundled file without a stamp, which counts as oldest")
+    {
+        const auto chosen = Boot(feed, dir, "200");
+        CHECK(chosen.bytes == SnapshotOf("150"));
+        CHECK(chosen.provenance.source == feed::GamedataSource::CarriedForward);
+        CHECK(feed::FormatProvenance(chosen.provenance) ==
+              "Gamedata: carried forward from build 1.0.150 (SourceRevision 150) in the Gamedata cache, seq 1, key de4a068ed7d94def; "
+              "warnings: the Gamedata Feed has no snapshot for build 1.0.200 (SourceRevision 200) on linux yet");
+    }
+    SUBCASE("a newer cached snapshot beats an older stamped bundled file")
+    {
+        CHECK(Boot(feed, dir, "200", Stamped("120")).bytes == SnapshotOf("150"));
+    }
+    SUBCASE("a newer bundled file beats an older cached snapshot")
+    {
+        const auto chosen = Boot(feed, dir, "200", Stamped("180"));
+        CHECK(chosen.bytes == Stamped("180"));
+        CHECK(chosen.provenance.source == feed::GamedataSource::Bundled);
+    }
+    SUBCASE("with the feed down too")
+    {
+        CHECK(Boot(kFeedDown, dir, "200").bytes == SnapshotOf("150"));
+    }
+}
+
+TEST_CASE("The bundled gamedata.json is stamped with its build, so it beats a cached older build")
+{
+    std::ifstream stream(CSSHARP_GAMEDATA_PATH, std::ios::binary);
+    const std::string bundled{ std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>() };
+    const GamedataDir dir;
+    const auto feed = FeedOf(1, { "11228971" }); // 1.41.9.7
+    Boot(feed, dir, "11228971");
+
+    CHECK(Boot(feed, dir, "99999999", bundled).bytes == bundled);
+}
+
+TEST_CASE("A tampered cache file is rejected: re-fetched when the feed answers, skipped when it does not")
+{
+    const GamedataDir dir;
+    const auto feed = SignedFeed();
+    feed::ChooseGamedata(Inputs(&feed, dir));
+    TamperFilesContaining(dir, kSnapshot);
+
+    SUBCASE("feed up: fetched again, and the cache is repaired")
+    {
+        const auto chosen = feed::ChooseGamedata(Inputs(&feed, dir));
+        CHECK(chosen.bytes == kSnapshot);
+        CHECK_FALSE(chosen.provenance.cached);
+        CHECK(AnyWarningContains(chosen.provenance, "cached snapshot for build 1.42.0.1 (SourceRevision 11268945) does not match the signed index"));
+
+        const auto next = feed::ChooseGamedata(Inputs(&kFeedDown, dir));
+        CHECK(next.bytes == kSnapshot);
+        CHECK(next.provenance.cached);
+    }
+    SUBCASE("feed down: bundled")
+    {
+        const auto chosen = feed::ChooseGamedata(Inputs(&kFeedDown, dir));
+        CHECK(chosen.bytes == kBundled);
+        CHECK(AnyWarningContains(chosen.provenance, "does not match the signed index"));
+    }
+}
+
+TEST_CASE("A tampered cached index is ignored")
+{
+    const GamedataDir dir;
+    const auto feed = SignedFeed();
+    feed::ChooseGamedata(Inputs(&feed, dir));
+    TamperFilesContaining(dir, "\"seq\"");
+
+    const auto chosen = feed::ChooseGamedata(Inputs(&kFeedDown, dir));
+    CHECK(chosen.bytes == kBundled);
+    CHECK(AnyWarningContains(chosen.provenance, "cached index signature invalid (key de4a068ed7d94def), ignored"));
+}
+
+TEST_CASE("The cache keeps the newest 20 builds")
+{
+    const GamedataDir dir;
+    std::vector<std::string> revisions;
+    for (int build = 1; build <= 21; ++build)
+        revisions.push_back(std::to_string(build));
+    const auto feed = FeedOf(1, revisions);
+    for (const auto& revision : revisions)
+        REQUIRE(Boot(feed, dir, revision).provenance.source == feed::GamedataSource::ExactBuild);
+
+    // Pruned at this boot: build 1 is the oldest of 21.
+    const auto oldest = Boot(kFeedDown, dir, "1");
+    CHECK(oldest.provenance.source == feed::GamedataSource::CarriedForward);
+    CHECK(oldest.bytes == SnapshotOf("21"));
+    // Kept.
+    CHECK(Boot(kFeedDown, dir, "2").provenance.source == feed::GamedataSource::ExactBuild);
+}
+
+// Atomicity is a property of how cache files are written, so these name the cache layout: <dir>/cache/<rev>.<os>.json.
+TEST_CASE("An interrupted cache write leaves no partial file")
+{
+    const GamedataDir dir;
+    const auto cache = dir.path / "cache";
+    const auto snapshot = cache / "100.linux.json";
+    const auto feed = FeedOf(1, { "100" });
+    const auto TempFiles = [&] {
+        std::vector<std::string> temps;
+        for (const auto& file : std::filesystem::recursive_directory_iterator(cache))
+            if (file.path().filename().string() != "100.linux.json" && file.path().filename().string() != "index.signed")
+                temps.push_back(file.path().filename().string());
+        return temps;
+    };
+
+    SUBCASE("a write that fails before the rename removes its temp file, and the boot goes on")
+    {
+        std::filesystem::create_directories(snapshot); // the rename onto it fails
+        const auto chosen = Boot(feed, dir, "100");
+        CHECK(chosen.bytes == SnapshotOf("100"));
+        CHECK(AnyWarningContains(chosen.provenance, "could not write the Gamedata cache file"));
+        CHECK(TempFiles().empty());
+    }
+    SUBCASE("a temp file left by a crash is never booted on and is removed at the next boot")
+    {
+        Boot(feed, dir, "100");
+        std::filesystem::remove(snapshot);
+        std::ofstream(std::filesystem::path(snapshot) += ".tmp", std::ios::binary) << SnapshotOf("100").substr(0, 10);
+
+        CHECK(Boot(kFeedDown, dir, "100").bytes == kBundled);
+        CHECK(TempFiles().empty());
+    }
+}
+
+TEST_CASE("Rollback: an index with a lower seq than the highest accepted one is rejected")
+{
+    const GamedataDir dir;
+    const auto current = FeedOf(7, { "100" });
+    Boot(current, dir, "100");
+
+    const auto rolledBack = FeedOf(5, { "100" }, { { "100", R"({ "Old": {} })" } });
+    const auto chosen = Boot(rolledBack, dir, "100");
+    CHECK(chosen.bytes == SnapshotOf("100"));
+    CHECK(feed::FormatProvenance(chosen.provenance) ==
+          "Gamedata: exact build 1.0.100 (SourceRevision 100) from the Gamedata cache, seq 7, key de4a068ed7d94def; warnings: Gamedata "
+          "Feed index seq 5 is below the highest accepted seq 7, rejected as a rollback");
+    // Still rejected next time: the rolled-back index did not replace the accepted one.
+    CHECK(Boot(rolledBack, dir, "100").provenance.seq == 7);
+}
+
+TEST_CASE("Rollback: an index below the release's seq floor is rejected after the cache state is deleted")
+{
+    const GamedataDir dir;
+    Boot(FeedOf(12, { "100" }), dir, "100", kBundled, 10);
+    std::filesystem::remove_all(dir.path);
+    std::filesystem::create_directories(dir.path);
+
+    const auto belowFloor = FeedOf(7, { "100" });
+    const auto chosen = Boot(belowFloor, dir, "100", kBundled, 10);
+    CHECK(chosen.bytes == kBundled);
+    CHECK(AnyWarningContains(chosen.provenance, "Gamedata Feed index seq 7 is below the highest accepted seq 10, rejected as a rollback"));
+
+    CHECK(Boot(FeedOf(10, { "100" }), dir, "100", kBundled, 10).provenance.seq == 10);
+}
+
+TEST_CASE("Legacy updater leftovers: gamedata.etag is deleted, and AutoUpdate* config keys get one deprecation warning")
+{
+    const GamedataDir dir;
+    std::ofstream(dir.path / "gamedata.etag") << "\"abc\"";
+    auto inputs = Inputs(nullptr, dir);
+    inputs.legacyConfigKeys = { "AutoUpdateEnabled", "AutoUpdateURL" };
+
+    const auto chosen = feed::ChooseGamedata(inputs);
+    CHECK_FALSE(std::filesystem::exists(dir.path / "gamedata.etag"));
+    CHECK(feed::FormatProvenance(chosen.provenance) ==
+          "Gamedata: bundled gamedata.json; warnings: core config AutoUpdateEnabled and AutoUpdateURL are deprecated and ignored: the "
+          "Gamedata Feed replaced the legacy updater");
 }

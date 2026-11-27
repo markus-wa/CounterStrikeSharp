@@ -170,6 +170,11 @@ endif()
 # Libraries
 target_link_libraries(${PROJECT_NAME} ${COUNTER_STRIKE_SHARP_LINK_LIBRARIES} Protobufs zydis monocypher)
 
+# The Gamedata Feed seq this release was built against (core/core_gamedata.cpp): boot rejects a lower seq even when the
+# Gamedata cache holds no accepted index. Release builds pass -DCSSHARP_GAMEDATA_SEQ_FLOOR=<seq>.
+set(CSSHARP_GAMEDATA_SEQ_FLOOR 0 CACHE STRING "Lowest Gamedata Feed seq this build accepts")
+target_compile_definitions(${PROJECT_NAME} PRIVATE CSSHARP_GAMEDATA_SEQ_FLOOR=${CSSHARP_GAMEDATA_SEQ_FLOOR}ULL)
+
 add_custom_command(
     TARGET ${PROJECT_NAME} PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory

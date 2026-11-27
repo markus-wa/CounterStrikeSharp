@@ -64,6 +64,9 @@ bool CCoreConfig::Init(char* conf_error, int conf_error_size)
         UnlockConVars = m_json.value("UnlockConVars", UnlockConVars);
         GamedataFeedEnabled = m_json.value("GamedataFeedEnabled", GamedataFeedEnabled);
         GamedataFeedUrl = m_json.value("GamedataFeedUrl", GamedataFeedUrl);
+        LegacyConfigKeys.clear();
+        for (const auto* key : { "AutoUpdateEnabled", "AutoUpdateURL" })
+            if (m_json.contains(key)) LegacyConfigKeys.emplace_back(key);
         ReadOperatorSettings();
     }
     catch (const std::exception& ex)

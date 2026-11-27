@@ -40,6 +40,9 @@ bool LoadCoreGamedata(std::string& error)
     inputs.os = "linux";
 #endif
     inputs.bundled.assign(std::istreambuf_iterator<char>(bundled), std::istreambuf_iterator<char>());
+    inputs.gamedataDir = utils::GamedataDirectory();
+    inputs.seqFloor = CSSHARP_GAMEDATA_SEQ_FLOOR;
+    inputs.legacyConfigKeys = globals::coreConfig->LegacyConfigKeys;
     chosen = feed::ChooseGamedata(inputs);
 
     const auto provenance = feed::FormatProvenance(chosen.provenance);

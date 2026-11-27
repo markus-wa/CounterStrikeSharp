@@ -10,9 +10,12 @@
 //   index.json.sig   72 bytes: key id (8) + Ed25519 signature (64) over kIndexSignaturePrefix + index.json's raw bytes
 //   <file>           a Gamedata Snapshot: the complete Gamedata for that build and OS
 // Signer: eng/gamedata-feed/sign_feed.py.
+//
+// The bundled gamedata.json carries a top-level "sourceRevision": "<SourceRevision>" stamp: the build it was made for.
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -40,16 +43,18 @@ std::string KeyId(const PublicKey& key);
 enum class GamedataSource
 {
     Bundled, // the bundled gamedata.json
-    ExactBuild, // the feed's Gamedata Snapshot for exactly this build and OS
+    ExactBuild, // the feed's Gamedata Snapshot for exactly this build and OS, fetched this boot or cached
+    CarriedForward, // the newest cached snapshot of another build: the feed has none for this build (yet)
 };
 
 // Where the boot's Gamedata came from, for the startup report.
 struct Provenance
 {
     GamedataSource source = GamedataSource::Bundled;
-    std::string build; // the snapshot's build label (ExactBuild only)
-    std::optional<std::uint64_t> seq; // the signed index's seq (ExactBuild only)
-    std::string keyId; // the key that signed the index (ExactBuild only)
+    bool cached = false; // read from the Gamedata cache, not fetched this boot (always for CarriedForward)
+    std::string build; // the snapshot's build label (not Bundled)
+    std::optional<std::uint64_t> seq; // the seq of the signed index that vouches for the snapshot (not Bundled)
+    std::string keyId; // the key that signed that index (not Bundled)
     std::vector<std::string> warnings; // why the feed was not used, or what was off with it
 };
 
@@ -62,6 +67,13 @@ struct GamedataSourceInputs
     bindings::BuildIdentity build;
     std::string os; // "linux" or "windows"
     std::string bundled; // the bundled gamedata.json's bytes
+    // The directory of the bundled gamedata.json. The Gamedata cache lives in its "cache" subdirectory, never as *.json
+    // directly in it (managed loads every gamedata/*.json). Empty: no cache and no legacy cleanup.
+    std::filesystem::path gamedataDir;
+    // The lowest seq accepted even when the cache holds no accepted index (deleted state): the release's seq floor.
+    std::uint64_t seqFloor = 0;
+    // Legacy updater keys found in the core config (AutoUpdateEnabled, AutoUpdateURL): ignored, one deprecation warning.
+    std::vector<std::string> legacyConfigKeys;
 };
 
 struct ChosenGamedata
@@ -70,13 +82,21 @@ struct ChosenGamedata
     Provenance provenance;
 };
 
-// The feed's snapshot for exactly this build and OS, when the signed index lists it and it matches the index's size and
-// sha256; otherwise the bundled bytes, with the reason in provenance warnings. No index byte is parsed before its
-// signature verifies and no snapshot byte before its hash matches. Never throws: boot never fails because of the feed.
+// With the feed on, in order:
+//   1. the snapshot for exactly this build and OS, cached or fetched, that matches the signed index's size and sha256;
+//   2. otherwise the newest by SourceRevision of the cached snapshots that match the signed index and the bundled file
+//      (an unstamped bundled file counts as oldest): a cached one is reported as carried forward;
+//   3. otherwise the bundled bytes.
+// The signed index is the fetched one when its seq is not below the cached index's or seqFloor (rollback), else the
+// cached one. The reasons for skipping a step are provenance warnings. No index byte is parsed before its signature
+// verifies and no snapshot byte before its hash matches, cached files included. Accepted indexes and verified snapshots
+// are cached by atomic writes; at most the newest 20 builds stay cached. Never throws: boot never fails because of the
+// feed. With the feed off, the bundled bytes, and nothing is fetched or read from the cache.
 ChosenGamedata ChooseGamedata(const GamedataSourceInputs& inputs);
 
 // One line, e.g. "Gamedata: exact build 1.42.0.1 (SourceRevision 11268945) from the Gamedata Feed, seq 7, key
-// de4a068ed7d94def" or "Gamedata: bundled gamedata.json; warnings: index signature invalid".
+// de4a068ed7d94def", "Gamedata: carried forward from build 1.41.9.7 (SourceRevision 11228971) in the Gamedata cache, seq
+// 7, key de4a068ed7d94def" or "Gamedata: bundled gamedata.json; warnings: index signature invalid".
 std::string FormatProvenance(const Provenance& provenance);
 
 } // namespace counterstrikesharp::feed

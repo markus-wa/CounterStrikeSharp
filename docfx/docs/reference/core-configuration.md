@@ -52,7 +52,9 @@ When enabled, will remove the `FCVAR_HIDDEN`,`FCVAR_DEVELOPMENTONLY`, `FCVAR_MIS
 
 When enabled (the default, on Linux and Windows), CS# fetches the Gamedata for exactly the CS2 build the server runs from the signed Gamedata Feed at boot. The feed's index must carry a valid Ed25519 signature and the snapshot must match the size and sha256 it lists, or CS# boots on the bundled `gamedata.json` and logs why. The bundled file is never modified. The startup report has a `Gamedata:` line that says which was used. Set to `false` to always boot on the bundled file without any network access.
 
-This replaces `AutoUpdateEnabled` and `AutoUpdateURL`, which are ignored.
+Verified snapshots are cached in `gamedata/cache/` (the newest 20 builds) and re-verified on every boot, so a server that restarts while the feed is unreachable boots on its cached snapshot. When the feed has no snapshot for the running build yet, CS# carries forward the newest of the cached snapshots and the bundled file (by `SourceRevision`). An index with a lower `seq` than one already accepted, or than the release was built with, is rejected.
+
+This replaces `AutoUpdateEnabled` and `AutoUpdateURL`, which are ignored with a deprecation warning; the legacy `gamedata.etag` file is deleted.
 
 ## GamedataFeedUrl
 

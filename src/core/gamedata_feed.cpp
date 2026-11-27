@@ -1,7 +1,22 @@
 #include "core/gamedata_feed.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <cstring>
 #include <exception>
+#include <fstream>
+#include <functional>
+#include <iterator>
+#include <map>
+#include <stdexcept>
+
+#include <fcntl.h>
+#ifdef _WIN32
+#include <io.h>
+#include <sys/stat.h>
+#else
+#include <unistd.h>
+#endif
 
 #include <nlohmann/json.hpp>
 
@@ -11,6 +26,15 @@
 
 namespace counterstrikesharp::feed {
 namespace {
+
+namespace fs = std::filesystem;
+
+// The Gamedata cache, in <gamedata dir>/cache: the latest accepted index as kCachedIndex (its signature file followed by
+// its bytes, so one atomic write keeps the pair consistent) and one immutable <SourceRevision>.<os>.json per build and OS.
+constexpr std::string_view kCacheDir = "cache";
+constexpr std::string_view kCachedIndex = "index.signed";
+constexpr std::string_view kTempSuffix = ".tmp";
+constexpr std::size_t kCachedBuilds = 20;
 
 // shortcut: the only built-in key is the test key (eng/gamedata-feed/test-key.pem, private key public in the repo), so
 // anyone can sign a feed the core trusts; ticket 09 replaces it with the CI signing key and the offline backup key.
@@ -104,66 +128,293 @@ std::string Fetch(const http::Transport& transport, const std::string& url, std:
     return result.body.value_or("");
 }
 
-// The verified snapshot for the build, described in provenance, or none with the reason in error.
-std::optional<std::string> FromFeed(const GamedataSourceInputs& inputs, Provenance& provenance, std::string& error)
+// A SourceRevision as a number, or none when it is not one (then it never names a cache file).
+std::optional<std::uint64_t> Revision(std::string_view text)
 {
-    if (inputs.build.sourceRevision == "unknown")
-    {
-        error = "this build's SourceRevision is unknown (no steam.inf), no snapshot to pick";
+    if (text.empty() || text.size() > 19 || !std::all_of(text.begin(), text.end(), [](char c) {
+            return c >= '0' && c <= '9';
+        }))
         return std::nullopt;
-    }
+    return std::stoull(std::string(text));
+}
 
-    std::string base = inputs.feedUrl;
-    while (!base.empty() && base.back() == '/')
-        base.pop_back();
+// The bundled file's "sourceRevision" stamp; none when it has none, so it counts as the oldest.
+std::optional<std::uint64_t> BundledRevision(const std::string& bundled)
+{
+    const auto root = nlohmann::json::parse(bundled, nullptr, false);
+    if (!root.is_object()) return std::nullopt;
+    const auto stamp = root.find("sourceRevision");
+    if (stamp == root.end() || !stamp->is_string()) return std::nullopt;
+    return Revision(stamp->get<std::string>());
+}
 
-    const auto keys = TrustedKeys(inputs.publicKeys, provenance.warnings);
-    const auto index = Fetch(*inputs.transport, base + "/index.json", error);
-    if (!error.empty()) return std::nullopt;
-    const auto signature = Fetch(*inputs.transport, base + "/index.json.sig", error);
-    if (!error.empty()) return std::nullopt;
-    if (!VerifyIndex(index, signature, keys, provenance.keyId, error)) return std::nullopt;
+// An index whose signature verified, parsed.
+struct Index
+{
+    std::string signature;
+    std::string bytes;
+    nlohmann::json root;
+    std::uint64_t seq = 0;
+    std::string keyId;
+};
 
+std::optional<Index> AcceptIndex(std::string bytes, std::string signature, const std::vector<PublicKey>& keys, std::string& error)
+{
+    Index index{ std::move(signature), std::move(bytes) };
+    if (!VerifyIndex(index.bytes, index.signature, keys, index.keyId, error)) return std::nullopt;
     // Verified: from here on the index is the publisher's.
-    const auto root = nlohmann::json::parse(index);
-    const auto& builds = root.at("builds");
-    const auto build = builds.find(inputs.build.sourceRevision);
-    if (build == builds.end() || !build->contains(inputs.os))
+    try
     {
-        error = "the Gamedata Feed has no snapshot for build " + inputs.build.Label() + " on " + inputs.os + " yet";
+        index.root = nlohmann::json::parse(index.bytes);
+        index.seq = index.root.at("seq").get<std::uint64_t>();
+        if (!index.root.at("builds").is_object()) throw std::invalid_argument("\"builds\" is not an object");
+    }
+    catch (const std::exception& ex)
+    {
+        error = std::string("index unreadable: ") + ex.what();
         return std::nullopt;
     }
-    const auto& entry = build->at(inputs.os);
-    const auto file = entry.at("file").get<std::string>();
-    const auto size = entry.at("size").get<std::uint64_t>();
-    const auto sha256 = entry.at("sha256").get<std::string>();
+    return index;
+}
 
-    auto snapshot = Fetch(*inputs.transport, base + "/" + file, error);
-    if (!error.empty()) return std::nullopt;
+struct SnapshotEntry
+{
+    std::string label; // the build's label
+    std::string file;
+    std::uint64_t size = 0;
+    std::string sha256;
+};
+
+std::optional<SnapshotEntry> EntryFor(const Index& index, const std::string& revision, const std::string& os)
+{
+    const auto& builds = index.root.at("builds");
+    const auto build = builds.find(revision);
+    if (build == builds.end() || !build->is_object() || !build->contains(os)) return std::nullopt;
+    const auto& entry = build->at(os);
+    return SnapshotEntry{ bindings::BuildIdentity{ build->value("patchVersion", "unknown"), revision }.Label(),
+                          entry.at("file").get<std::string>(), entry.at("size").get<std::uint64_t>(),
+                          entry.at("sha256").get<std::string>() };
+}
+
+bool Matches(std::string_view snapshot, const SnapshotEntry& entry)
+{
     const auto digest = Sha256(snapshot);
-    if (snapshot.size() != size || ToHex(digest.data(), digest.size()) != sha256)
+    return snapshot.size() == entry.size && ToHex(digest.data(), digest.size()) == entry.sha256;
+}
+
+// The verified snapshot for entry, or none with the reason in error.
+std::optional<std::string> FetchSnapshot(const http::Transport& transport, const std::string& base, const SnapshotEntry& entry,
+                                         const std::string& os, std::string& error)
+{
+    auto snapshot = Fetch(transport, base + "/" + entry.file, error);
+    if (!error.empty()) return std::nullopt;
+    if (!Matches(snapshot, entry))
     {
-        error = "snapshot " + file + " does not match the signed index (size " + std::to_string(snapshot.size()) + ", index says " +
-                std::to_string(size) + ", or sha256 differs)";
+        error = "snapshot " + entry.file + " does not match the signed index (size " + std::to_string(snapshot.size()) +
+                ", index says " + std::to_string(entry.size) + ", or sha256 differs)";
         return std::nullopt;
     }
     // Hash verified; still Gamedata the resolver can read, or the bundled file is the better choice.
     try
     {
-        bindings::ParseGamedataBytes(snapshot, inputs.os);
+        bindings::ParseGamedataBytes(snapshot, os);
     }
     catch (const std::exception& ex)
     {
-        error = "snapshot " + file + " is not readable Gamedata: " + ex.what();
+        error = "snapshot " + entry.file + " is not readable Gamedata: " + ex.what();
         return std::nullopt;
     }
-
-    provenance.source = GamedataSource::ExactBuild;
-    provenance.build = inputs.build.Label();
-    provenance.seq = root.at("seq").get<std::uint64_t>();
     return snapshot;
 }
 
+fs::path SnapshotPath(const fs::path& cache, const std::string& revision, const std::string& os)
+{
+    return cache / (revision + "." + os + ".json");
+}
+
+// A regular file's bytes; none when it is absent or unreadable.
+std::optional<std::string> ReadFile(const fs::path& path)
+{
+    std::error_code ec;
+    if (path.empty() || !fs::is_regular_file(path, ec)) return std::nullopt;
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream) return std::nullopt;
+    return std::string(std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
+}
+
+#ifdef _WIN32
+int OpenNew(const fs::path& path) { return _wopen(path.c_str(), _O_WRONLY | _O_CREAT | _O_TRUNC | _O_BINARY, _S_IREAD | _S_IWRITE); }
+long long WriteSome(int fd, const char* bytes, std::size_t size)
+{
+    return _write(fd, bytes, static_cast<unsigned>(std::min<std::size_t>(size, 1u << 30)));
+}
+int Flush(int fd) { return _commit(fd); }
+int Close(int fd) { return _close(fd); }
+#else
+int OpenNew(const fs::path& path) { return ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644); }
+long long WriteSome(int fd, const char* bytes, std::size_t size) { return ::write(fd, bytes, size); }
+int Flush(int fd) { return ::fsync(fd); }
+int Close(int fd) { return ::close(fd); }
+#endif
+
+// Replaces path by bytes atomically: a temp file next to it, flushed to disk, renamed over it (std::filesystem::rename
+// replaces an existing file on both OSes). A crash or failure leaves the old file or the new one, never a partial one;
+// a temp file left by a crash is removed by the next boot's PruneCache. A failure is a warning: the boot goes on.
+void WriteCacheFile(const fs::path& path, std::string_view bytes, std::vector<std::string>& warnings)
+{
+    std::error_code ec;
+    fs::create_directories(path.parent_path(), ec);
+    const auto temp = fs::path(path) += kTempSuffix;
+    const int fd = OpenNew(temp);
+    bool ok = fd >= 0;
+    for (std::size_t written = 0; ok && written < bytes.size();)
+    {
+        const auto count = WriteSome(fd, bytes.data() + written, bytes.size() - written);
+        if (count > 0) written += static_cast<std::size_t>(count);
+        else
+            ok = count < 0 && errno == EINTR;
+    }
+    std::string error = ok ? "" : std::strerror(errno);
+    if (ok && Flush(fd) != 0) error = std::strerror(errno);
+    if (fd >= 0 && Close(fd) != 0 && error.empty()) error = std::strerror(errno);
+    if (error.empty())
+    {
+        fs::rename(temp, path, ec);
+        if (!ec) return;
+        error = ec.message();
+    }
+    fs::remove(temp, ec);
+    warnings.push_back("could not write the Gamedata cache file " + path.string() + ": " + error);
+}
+
+// Keeps the snapshots of the newest kCachedBuilds builds; removes older ones and temp files left by interrupted writes.
+void PruneCache(const fs::path& cache)
+{
+    std::error_code ec;
+    std::vector<fs::path> files;
+    for (const auto& file : fs::directory_iterator(cache, ec))
+        files.push_back(file.path());
+
+    std::map<std::uint64_t, std::vector<fs::path>, std::greater<>> builds;
+    for (const auto& file : files)
+    {
+        const auto name = file.filename().string();
+        if (name.ends_with(kTempSuffix)) fs::remove(file, ec);
+        else if (const auto revision = Revision(name.substr(0, name.find('.'))))
+            builds[*revision].push_back(file);
+    }
+    std::size_t kept = 0;
+    for (const auto& [revision, snapshots] : builds)
+        if (++kept > kCachedBuilds)
+            for (const auto& snapshot : snapshots)
+                fs::remove(snapshot, ec);
+}
+
+ChosenGamedata FromIndex(std::string bytes, GamedataSource source, bool cached, const Index& index, std::string build)
+{
+    ChosenGamedata chosen{ std::move(bytes), {} };
+    chosen.provenance.source = source;
+    chosen.provenance.cached = cached;
+    chosen.provenance.build = std::move(build);
+    chosen.provenance.seq = index.seq;
+    chosen.provenance.keyId = index.keyId;
+    return chosen;
+}
+
+// The selection of ChooseGamedata with the feed on; the reasons for skipping a step are appended to warnings.
+ChosenGamedata Choose(const GamedataSourceInputs& inputs, std::vector<std::string>& warnings)
+{
+    const ChosenGamedata bundled{ inputs.bundled, {} };
+    const auto& revision = inputs.build.sourceRevision;
+    if (!Revision(revision))
+    {
+        warnings.push_back("this build's SourceRevision is unknown (no steam.inf), no snapshot to pick");
+        return bundled;
+    }
+
+    std::string base = inputs.feedUrl;
+    while (!base.empty() && base.back() == '/')
+        base.pop_back();
+    const auto keys = TrustedKeys(inputs.publicKeys, warnings);
+    const auto cache = inputs.gamedataDir.empty() ? fs::path() : inputs.gamedataDir / kCacheDir;
+
+    std::optional<Index> stored;
+    if (const auto file = ReadFile(cache.empty() ? fs::path() : cache / kCachedIndex))
+    {
+        const auto split = std::min(file->size(), kKeyIdSize + kSignatureSize);
+        std::string error;
+        stored = AcceptIndex(file->substr(split), file->substr(0, split), keys, error);
+        if (!stored) warnings.push_back("cached " + error + ", ignored");
+    }
+
+    // Rollback protection: never below the highest seq accepted so far, nor below the release's floor.
+    const auto floor = std::max(inputs.seqFloor, stored ? stored->seq : 0);
+    std::optional<Index> fetched;
+    {
+        std::string error;
+        auto index = Fetch(*inputs.transport, base + "/index.json", error);
+        auto signature = error.empty() ? Fetch(*inputs.transport, base + "/index.json.sig", error) : "";
+        if (error.empty()) fetched = AcceptIndex(std::move(index), std::move(signature), keys, error);
+        if (fetched && fetched->seq < floor)
+        {
+            error = "Gamedata Feed index seq " + std::to_string(fetched->seq) + " is below the highest accepted seq " +
+                    std::to_string(floor) + ", rejected as a rollback";
+            fetched.reset();
+        }
+        if (!error.empty()) warnings.push_back(error);
+    }
+    if (fetched && !cache.empty() && (!stored || stored->signature != fetched->signature || stored->bytes != fetched->bytes))
+        WriteCacheFile(cache / kCachedIndex, fetched->signature + fetched->bytes, warnings);
+
+    const Index* index = fetched ? &*fetched : stored ? &*stored : nullptr;
+    if (index == nullptr) return bundled;
+
+    // 1. Exactly this build: cached, or fetched when the feed answered.
+    if (const auto entry = EntryFor(*index, revision, inputs.os))
+    {
+        const auto path = cache.empty() ? fs::path() : SnapshotPath(cache, revision, inputs.os);
+        if (auto cached = ReadFile(path))
+        {
+            if (Matches(*cached, *entry)) return FromIndex(std::move(*cached), GamedataSource::ExactBuild, true, *index, entry->label);
+            warnings.push_back("cached snapshot for build " + entry->label + " does not match the signed index, ignored");
+        }
+        if (fetched)
+        {
+            std::string error;
+            if (auto snapshot = FetchSnapshot(*inputs.transport, base, *entry, inputs.os, error))
+            {
+                if (!path.empty()) WriteCacheFile(path, *snapshot, warnings);
+                return FromIndex(std::move(*snapshot), GamedataSource::ExactBuild, false, *index, entry->label);
+            }
+            warnings.push_back(error);
+        }
+    }
+    else
+        warnings.push_back("the Gamedata Feed has no snapshot for build " + inputs.build.Label() + " on " + inputs.os + " yet");
+
+    // 2. Carry forward the newest of the verified cached snapshots and the bundled file.
+    // shortcut: a cached snapshot is verified only against the one accepted index, so a build the publisher drops from
+    // the index can no longer be carried forward; keep per-snapshot proof (index + signature) if the feed ever prunes.
+    ChosenGamedata newest = bundled;
+    auto newestRevision = BundledRevision(inputs.bundled);
+    if (cache.empty()) return newest;
+    for (const auto& [other, build] : index->root.at("builds").items())
+    {
+        const auto otherRevision = Revision(other);
+        const auto entry = otherRevision ? EntryFor(*index, other, inputs.os) : std::nullopt;
+        if (!entry || other == revision || (newestRevision && *otherRevision <= *newestRevision)) continue;
+        auto cached = ReadFile(SnapshotPath(cache, other, inputs.os));
+        if (!cached) continue;
+        if (!Matches(*cached, *entry))
+        {
+            warnings.push_back("cached snapshot for build " + entry->label + " does not match the signed index, skipped");
+            continue;
+        }
+        newest = FromIndex(std::move(*cached), GamedataSource::CarriedForward, true, *index, entry->label);
+        newestRevision = otherRevision;
+    }
+    return newest;
+}
 } // namespace
 
 bool VerifyEd25519(const PublicKey& key, std::string_view message, std::string_view signature)
@@ -181,29 +432,47 @@ std::string KeyId(const PublicKey& key)
 
 ChosenGamedata ChooseGamedata(const GamedataSourceInputs& inputs)
 {
-    if (inputs.transport == nullptr) return { inputs.bundled, {} };
+    std::vector<std::string> warnings;
+    if (!inputs.legacyConfigKeys.empty())
+    {
+        std::string keys;
+        for (const auto& key : inputs.legacyConfigKeys)
+            keys += (keys.empty() ? "" : " and ") + key;
+        warnings.push_back("core config " + keys + (inputs.legacyConfigKeys.size() == 1 ? " is" : " are") +
+                           " deprecated and ignored: the Gamedata Feed replaced the legacy updater");
+    }
+    if (!inputs.gamedataDir.empty())
+    {
+        std::error_code ec;
+        fs::remove(inputs.gamedataDir / "gamedata.etag", ec); // the legacy updater's
+        PruneCache(inputs.gamedataDir / kCacheDir);
+    }
 
-    Provenance provenance;
-    std::string error;
-    try
+    ChosenGamedata chosen{ inputs.bundled, {} };
+    if (inputs.transport != nullptr)
     {
-        if (auto snapshot = FromFeed(inputs, provenance, error)) return { std::move(*snapshot), std::move(provenance) };
+        try
+        {
+            chosen = Choose(inputs, warnings);
+        }
+        catch (const std::exception& ex)
+        {
+            chosen = { inputs.bundled, {} };
+            warnings.push_back(std::string("Gamedata Feed index unreadable: ") + ex.what());
+        }
     }
-    catch (const std::exception& ex)
-    {
-        error = std::string("Gamedata Feed index unreadable: ") + ex.what();
-    }
-    ChosenGamedata bundled{ inputs.bundled, {} };
-    bundled.provenance.warnings = std::move(provenance.warnings);
-    bundled.provenance.warnings.push_back(std::move(error));
-    return bundled;
+    chosen.provenance.warnings = std::move(warnings);
+    return chosen;
 }
 
 std::string FormatProvenance(const Provenance& provenance)
 {
+    const auto vouched = ", seq " + std::to_string(provenance.seq.value_or(0)) + ", key " + provenance.keyId;
     std::string text = provenance.source == GamedataSource::ExactBuild
-                           ? "Gamedata: exact build " + provenance.build + " from the Gamedata Feed, seq " +
-                                 std::to_string(provenance.seq.value_or(0)) + ", key " + provenance.keyId
+                           ? "Gamedata: exact build " + provenance.build + " from the Gamedata " +
+                                 (provenance.cached ? "cache" : "Feed") + vouched
+                       : provenance.source == GamedataSource::CarriedForward
+                           ? "Gamedata: carried forward from build " + provenance.build + " in the Gamedata cache" + vouched
                            : "Gamedata: bundled gamedata.json";
     for (std::size_t i = 0; i < provenance.warnings.size(); ++i)
         text += (i == 0 ? "; warnings: " : "; ") + provenance.warnings[i];

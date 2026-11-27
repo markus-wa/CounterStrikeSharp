@@ -29,8 +29,6 @@ gamedata_repo=${CSS_E2E_GAMEDATA_REPO:-$HOME/dev/markus-wa/cssharp-gamedata}
 [ -f "$gamedata_repo/publisher/publish.py" ] ||
     { echo "gamedata-feed: no publisher in $gamedata_repo (set CSS_E2E_GAMEDATA_REPO to the cssharp-gamedata checkout)"; exit 1; }
 
-blackhole_port=$((port + 1))
-
 work=$(mktemp -d)
 httpd= blackhole=
 trap 'kill $httpd $blackhole 2>/dev/null; rm -rf "$work"' EXIT
@@ -50,23 +48,25 @@ python3 -I -c 'import sys; p = sys.argv[1]; b = bytearray(open(p, "rb").read());
 
 python3 -I -u -m http.server --bind 127.0.0.1 --directory "$work" "$port" >"$work/httpd.out" 2>"$work/httpd.log" &
 httpd=$!
+# Accepts and never answers, on a free port it prints.
 python3 -I -u -c '
-import socket, sys
-s = socket.create_server(("127.0.0.1", int(sys.argv[1])))
-print("Serving HTTP (blackhole)")
+import socket
+s = socket.create_server(("127.0.0.1", 0))
+print("Serving HTTP (blackhole) port", s.getsockname()[1])
 held = []
 while True:
     held.append(s.accept()[0])
-' "$blackhole_port" >"$work/blackhole.out" 2>"$work/blackhole.log" &
+' >"$work/blackhole.out" 2>"$work/blackhole.log" &
 blackhole=$!
 # Wait for these servers, not just the ports: a port taken by another run (e.g. a concurrent agent's) would serve its feed.
 for server in httpd blackhole; do
     until grep -q '^Serving HTTP' "$work/$server.out"; do
         kill -0 "${!server}" 2>/dev/null ||
-            { echo "gamedata-feed: $server failed on port $port or $blackhole_port (set CSS_E2E_FEED_PORT):"; cat "$work/$server.log"; exit 1; }
+            { echo "gamedata-feed: $server failed (set CSS_E2E_FEED_PORT if port $port is taken):"; cat "$work/$server.log"; exit 1; }
         sleep 0.1
     done
 done
+blackhole_port=$(sed -n 's/^Serving HTTP (blackhole) port //p' "$work/blackhole.out")
 
 feed() { echo ".GamedataFeedEnabled = $1 | .GamedataFeedUrl = \"$2\""; }
 status=0

@@ -1,6 +1,8 @@
 #include <doctest.h>
 
 #include <cstdint>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -292,6 +294,33 @@ TEST_CASE("ParseGamedata ignores entries it cannot read instead of throwing")
     CHECK(parsed.at("C").hasOffsets);
     CHECK_FALSE(parsed.at("C").offset.has_value());
     CHECK(ParseGamedata(json::array(), "linux").empty());
+}
+
+TEST_CASE("Gamedata reads from a Gamedata file's bytes in memory")
+{
+    const auto gamedata = ParseGamedataBytes(R"({"Host_Say": {"signatures": {"library": "server", "linux": "55 48 89 E5"},
+                                                              "offsets": {"windows": 7}}})",
+                                             "linux");
+    REQUIRE(gamedata.size() == 1);
+    CHECK(gamedata.at("Host_Say").library == "server");
+    CHECK(gamedata.at("Host_Say").signature == "55 48 89 E5");
+    CHECK(gamedata.at("Host_Say").hasOffsets);
+    CHECK_FALSE(gamedata.at("Host_Say").offset.has_value());
+    CHECK_THROWS(ParseGamedataBytes("{ not json", "linux"));
+}
+
+TEST_CASE("The bundled gamedata.json read as bytes gives the same Gamedata as parsed from the file")
+{
+    std::ifstream file(CSSHARP_GAMEDATA_PATH);
+    REQUIRE(file.good());
+    const auto fromFile = ParseGamedata(json::parse(file), "linux");
+    std::ifstream again(CSSHARP_GAMEDATA_PATH);
+    const std::string bytes((std::istreambuf_iterator<char>(again)), std::istreambuf_iterator<char>());
+
+    const auto fromBytes = ParseGamedataBytes(bytes, "linux");
+    REQUIRE(fromBytes.size() == fromFile.size());
+    CHECK(fromBytes.at("Host_Say").signature == fromFile.at("Host_Say").signature);
+    CHECK(fromBytes.at("CBaseEntity_Teleport").offset == fromFile.at("CBaseEntity_Teleport").offset);
 }
 
 TEST_CASE("ScanSignature counts every match of a raw signature across segments and reports the first")

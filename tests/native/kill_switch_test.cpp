@@ -86,7 +86,7 @@ TEST_CASE("disabledEngineFeatures is read as Kill Switches, not as a Binding")
 
     CHECK(ParseGamedata(gamedata, "linux").count("disabledEngineFeatures") == 0);
 
-    const auto kills = ParseKillSwitches(gamedata, {});
+    const auto kills = ParseKillSwitches(gamedata);
     REQUIRE(kills.size() == 2);
     CHECK(kills[0].id == "cssharp.server/game-system-events");
     CHECK(kills[0].reason == "crashes on map change");
@@ -94,9 +94,9 @@ TEST_CASE("disabledEngineFeatures is read as Kill Switches, not as a Binding")
     CHECK(kills[1].id == "cssharp.chat/say-hooks");
     CHECK(kills[1].reason == "no reason given");
 
-    CHECK(ParseKillSwitches(json::object(), {}).empty());
-    CHECK(ParseKillSwitches({ { "disabledEngineFeatures", "oops" } }, {}).empty());
-    CHECK(ParseKillSwitches(json::array(), {}).empty());
+    CHECK(ParseKillSwitches(json::object()).empty());
+    CHECK(ParseKillSwitches({ { "disabledEngineFeatures", "oops" } }).empty());
+    CHECK(ParseKillSwitches(json::array()).empty());
 }
 
 TEST_CASE("A feature-level Kill Switch disables only that Engine Feature, with its reason")
@@ -121,10 +121,11 @@ TEST_CASE("Forcing on re-enables a killed Engine Feature, never one whose Bindin
                               { { { "id", "cssharp.server/game-system-events" }, { "reason", "crashes" } },
                                 { { "id", "cssharp.chat/say-hooks" }, { "reason", "wrong hook" } } } } };
     const std::vector<std::string> forceEnabled{ "cssharp.server/game-system-events", "cssharp.chat/say-hooks" };
-    const auto kills = ParseKillSwitches(gamedata, forceEnabled);
+    const auto kills = ForceEnable(ParseKillSwitches(gamedata), forceEnabled);
     REQUIRE(kills.size() == 2);
     CHECK(kills[0].forced);
     CHECK(kills[1].forced);
+    CHECK_FALSE(ForceEnable(ParseKillSwitches(gamedata), {})[0].forced);
 
     const ResolutionReport report("b",
                                   { Failed("Host_Say", FailureReason::DisabledByGamedata), Resolved("IGameSystem_InitAllSystems_pFirst") },
@@ -144,8 +145,9 @@ TEST_CASE("Forcing on re-enables a killed Engine Feature, never one whose Bindin
 TEST_CASE("Every forced Engine Feature warns, and so does a force that names no Kill Switch")
 {
     const std::vector<std::string> forceEnabled{ "cssharp.server/game-system-events", "cssharp.chat/say-hooks" };
-    const auto kills = ParseKillSwitches(
-        { { "disabledEngineFeatures", { { { "id", "cssharp.server/game-system-events" }, { "reason", "crashes" } } } } }, forceEnabled);
+    const auto kills = ForceEnable(
+        ParseKillSwitches({ { "disabledEngineFeatures", { { { "id", "cssharp.server/game-system-events" }, { "reason", "crashes" } } } } }),
+        forceEnabled);
 
     CHECK(FormatForceEnableWarnings(kills, forceEnabled) ==
           std::vector<std::string>{ "Engine Feature cssharp.server/game-system-events is forced on by operator "

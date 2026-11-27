@@ -20,23 +20,24 @@ class CGameConfig
     CGameConfig(const std::string& path);
     ~CGameConfig();
 
+    // Reads the Gamedata file at the constructor's path.
     bool Init(char* conf_error, int conf_error_size);
+    // From a Gamedata file's bytes already in memory; the constructor's path then only names it.
+    bool InitFromBytes(std::string_view bytes, char* conf_error, int conf_error_size);
     const std::string GetPath();
     // Gamedata as the Binding resolver reads it, for this OS. Core code never looks keys up itself: it asks the
     // Resolution Report (core/core_bindings.h).
     const bindings::Gamedata& GetGamedata() const { return m_gamedata; }
-    // The parsed Gamedata document, for what is not a Binding (Kill Switches: bindings::ParseKillSwitches).
-    const json& GetJson() const { return m_json; }
+    // Gamedata's feature-level Kill Switches ("disabledEngineFeatures"), none forced yet.
+    const std::vector<bindings::EngineFeatureKill>& GetKillSwitches() const { return m_killSwitches; }
 
     static std::string GetDirectoryName(const std::string& directoryPathInput);
     static std::vector<int16_t> HexToByte(std::string_view src);
 
   private:
     std::string m_sPath;
-    // use Valve KeyValues in the future.
-    // since we'd better make '\' easier.
-    json m_json;
     bindings::Gamedata m_gamedata;
+    std::vector<bindings::EngineFeatureKill> m_killSwitches;
 };
 
 } // namespace counterstrikesharp

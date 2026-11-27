@@ -63,6 +63,10 @@ using Gamedata = std::map<std::string, GamedataEntry, std::less<>>;
 // ParseKillSwitches).
 Gamedata ParseGamedata(const nlohmann::json& root, std::string_view platform);
 
+// The same from a Gamedata file's bytes (the bundled gamedata.json, or a Gamedata Snapshot held in memory). Throws
+// nlohmann::json::parse_error when the bytes are not JSON.
+Gamedata ParseGamedataBytes(std::string_view bytes, std::string_view platform);
+
 // A Kill Switch on a whole Engine Feature (ADR-0006): Gamedata deliberately disables it, whatever its Bindings resolve
 // to. A Kill Switch on one Binding is a blank value instead (FailureReason::DisabledByGamedata). Append fields only.
 struct EngineFeatureKill
@@ -72,9 +76,12 @@ struct EngineFeatureKill
     bool forced = false; // the operator's ForceEnableEngineFeatures names it: the Engine Feature stays available
 };
 
-// Gamedata's top-level "disabledEngineFeatures": [{ "id", "reason" }], in order. Entries without a string id are
-// skipped; a missing reason reads "no reason given". forceEnabled is the operator's ForceEnableEngineFeatures.
-std::vector<EngineFeatureKill> ParseKillSwitches(const nlohmann::json& root, std::span<const std::string> forceEnabled);
+// Gamedata's top-level "disabledEngineFeatures": [{ "id", "reason" }], in order, none forced. Entries without a string
+// id are skipped; a missing reason reads "no reason given".
+std::vector<EngineFeatureKill> ParseKillSwitches(const nlohmann::json& root);
+
+// The kills with forced set where the operator's ForceEnableEngineFeatures names them.
+std::vector<EngineFeatureKill> ForceEnable(std::vector<EngineFeatureKill> kills, std::span<const std::string> forceEnabled);
 
 enum class BindingKind : std::uint8_t
 {
@@ -351,7 +358,16 @@ std::vector<std::string> FormatVtableSizeWarnings(const ResolutionReport& report
 // Enum values travel by name (the C++ enumerator names), so managed never depends on their numeric values.
 std::string ResolutionReportToJson(const ResolutionReport& report, std::span<const EngineFeatureDeclaration> nativeFeatures);
 
-// Build id from the game's steam.inf ("PatchVersion/ServerVersion"), or "unknown".
-std::string ParseBuildId(std::string_view steamInf);
+// The CS2 build as the game's steam.inf names it. A field steam.inf lacks (or a missing steam.inf) is "unknown".
+struct BuildIdentity
+{
+    std::string patchVersion; // "PatchVersion", e.g. "1.42.0.1": the human label
+    std::string sourceRevision; // "SourceRevision", e.g. "11268945": the key Gamedata Snapshots are published under
+
+    // The Resolution Report's build id, e.g. "1.42.0.1 (SourceRevision 11268945)".
+    [[nodiscard]] std::string Label() const;
+};
+
+BuildIdentity ParseBuildIdentity(std::string_view steamInf);
 
 } // namespace counterstrikesharp::bindings

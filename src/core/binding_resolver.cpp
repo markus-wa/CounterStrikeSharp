@@ -325,7 +325,12 @@ Gamedata ParseGamedata(const nlohmann::json& root, std::string_view platform)
     return gamedata;
 }
 
-std::vector<EngineFeatureKill> ParseKillSwitches(const nlohmann::json& root, std::span<const std::string> forceEnabled)
+Gamedata ParseGamedataBytes(std::string_view bytes, std::string_view platform)
+{
+    return ParseGamedata(nlohmann::json::parse(bytes), platform);
+}
+
+std::vector<EngineFeatureKill> ParseKillSwitches(const nlohmann::json& root)
 {
     std::vector<EngineFeatureKill> kills;
     if (!root.is_object()) return kills;
@@ -338,11 +343,16 @@ std::vector<EngineFeatureKill> ParseKillSwitches(const nlohmann::json& root, std
         const auto id = item.find("id");
         if (id == item.end() || !id->is_string()) continue;
         const auto reason = item.find("reason");
-        EngineFeatureKill kill{ id->get<std::string>(),
-                                reason != item.end() && reason->is_string() ? reason->get<std::string>() : "no reason given" };
-        kill.forced = std::find(forceEnabled.begin(), forceEnabled.end(), kill.id) != forceEnabled.end();
-        kills.push_back(std::move(kill));
+        kills.push_back({ id->get<std::string>(),
+                          reason != item.end() && reason->is_string() ? reason->get<std::string>() : "no reason given" });
     }
+    return kills;
+}
+
+std::vector<EngineFeatureKill> ForceEnable(std::vector<EngineFeatureKill> kills, std::span<const std::string> forceEnabled)
+{
+    for (auto& kill : kills)
+        kill.forced = std::find(forceEnabled.begin(), forceEnabled.end(), kill.id) != forceEnabled.end();
     return kills;
 }
 
@@ -709,7 +719,7 @@ std::string ResolutionReportToJson(const ResolutionReport& report, std::span<con
         .dump();
 }
 
-std::string ParseBuildId(std::string_view steamInf)
+BuildIdentity ParseBuildIdentity(std::string_view steamInf)
 {
     auto value = [&](std::string_view name) -> std::string {
         std::size_t pos = 0;
@@ -719,17 +729,15 @@ std::string ParseBuildId(std::string_view steamInf)
             if (end == std::string_view::npos) end = steamInf.size();
             std::string_view line = steamInf.substr(pos, end - pos);
             if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
-            if (line.size() > name.size() && line.substr(0, name.size()) == name && line[name.size()] == '=')
+            if (line.size() > name.size() + 1 && line.substr(0, name.size()) == name && line[name.size()] == '=')
                 return std::string(line.substr(name.size() + 1));
             pos = end + 1;
         }
-        return {};
+        return "unknown";
     };
-
-    std::string patch = value("PatchVersion");
-    const std::string server = value("ServerVersion");
-    if (patch.empty()) return "unknown";
-    return server.empty() ? patch : patch + "/" + server;
+    return { value("PatchVersion"), value("SourceRevision") };
 }
+
+std::string BuildIdentity::Label() const { return patchVersion + " (SourceRevision " + sourceRevision + ")"; }
 
 } // namespace counterstrikesharp::bindings

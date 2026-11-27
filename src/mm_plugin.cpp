@@ -147,10 +147,7 @@ bool CounterStrikeSharpMMPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, s
         if (globals::coreConfig->AutoUpdateEnabled)
         {
 #ifdef _WIN32
-            if (!update::TryUpdateGameConfig())
-            {
-                CSSHARP_CORE_ERROR("Failed to update game config.");
-            }
+            update::TryUpdateGameConfig(); // logs why it failed, if it does
 #else
             CSSHARP_CORE_WARN("Auto-update is not currently supported on this platform.");
 #endif

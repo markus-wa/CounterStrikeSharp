@@ -76,12 +76,21 @@ TEST_CASE("The Binding summary is one line listing failed Bindings with reasons"
     CHECK(FormatBindingSummary(noneFailed) == "Bindings for build 1.42.0.1/2000950: all 2 resolved");
 }
 
-TEST_CASE("ParseBuildId reads PatchVersion and ServerVersion from steam.inf")
+TEST_CASE("The build identity is PatchVersion and SourceRevision from steam.inf")
 {
-    CHECK(ParseBuildId("ClientVersion=2000950\r\nServerVersion=2000950\r\nPatchVersion=1.42.0.1\r\nProductName=cs2\r\n") ==
-          "1.42.0.1/2000950");
-    CHECK(ParseBuildId("PatchVersion=1.42.0.1\n") == "1.42.0.1");
-    CHECK(ParseBuildId("") == "unknown");
+    // steam.inf of 1.42.0.1, as shipped.
+    const auto build = ParseBuildIdentity("ClientVersion=2000950\r\nServerVersion=2000950\r\nPatchVersion=1.42.0.1\r\nProductName=cs2\r\n"
+                                          "appID=730\r\nServerAppID=2347773\r\nSourceRevision=11268945\r\nVersionDate=Nov 23 2026\r\n");
+    CHECK(build.patchVersion == "1.42.0.1");
+    CHECK(build.sourceRevision == "11268945");
+    CHECK(build.Label() == "1.42.0.1 (SourceRevision 11268945)");
+}
+
+TEST_CASE("A field missing from steam.inf, or steam.inf itself, reads as unknown")
+{
+    CHECK(ParseBuildIdentity("PatchVersion=1.42.0.1\n").sourceRevision == "unknown");
+    CHECK(ParseBuildIdentity("SourceRevision=11268945\n").patchVersion == "unknown");
+    CHECK(ParseBuildIdentity("").Label() == "unknown (SourceRevision unknown)");
 }
 
 TEST_CASE("The native Engine Feature catalog declares say-hooks on Host_Say")

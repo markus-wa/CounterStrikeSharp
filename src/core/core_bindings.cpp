@@ -83,13 +83,12 @@ SchemaFieldLookup FindServerSchemaField(std::string_view className, std::string_
     return { SchemaFieldStatus::Found, lookup.key.offset };
 }
 
-std::string ReadBuildId()
+BuildIdentity ReadBuildIdentity()
 {
     std::ifstream stream(utils::GameDirectory() + "/steam.inf");
-    if (!stream) return "unknown";
     std::stringstream contents;
-    contents << stream.rdbuf();
-    return ParseBuildId(contents.str());
+    if (stream) contents << stream.rdbuf();
+    return ParseBuildIdentity(contents.str());
 }
 
 } // namespace
@@ -112,11 +111,11 @@ void ResolveCoreBindings()
     for (auto& declaration : declarations)
         for (const auto& compiled : CompiledSlots())
             if (declaration.kind == BindingKind::Slot && declaration.key == compiled.key) declaration.compiledIndex = compiled.index;
-    const auto resolved = Resolver().Resolve(ReadBuildId(), gamedata, images, declarations);
+    const auto resolved = Resolver().Resolve(ReadBuildIdentity().Label(), gamedata, images, declarations);
     // Feature-level Kill Switches are Gamedata policy, not resolution: they join the report outside the resolver seam.
     const auto& forceEnabled = globals::coreConfig->ForceEnableEngineFeatures;
     coreReport = ResolutionReport(resolved.BuildId(), resolved.Bindings(), resolved.HealEnabled(),
-                                  ParseKillSwitches(globals::gameConfig->GetJson(), forceEnabled));
+                                  ForceEnable(globals::gameConfig->GetKillSwitches(), forceEnabled));
     for (const auto& warning : FormatForceEnableWarnings(coreReport.KillSwitches(), forceEnabled))
         CSSHARP_CORE_WARN("{}", warning);
     // Boot cost of resolving (signature scans, RTTI lookups, Vtable Checks), so a slow boot can be told apart.

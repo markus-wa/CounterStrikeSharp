@@ -38,6 +38,8 @@ set(SOURCE_FILES
     src/core/gameconfig.cpp
     src/core/gameconfig_updater.h
     src/core/gameconfig_updater.cpp
+    src/core/http_client.h
+    src/core/http_client.cpp
     src/core/log.h
     src/core/log.cpp
     src/scripting/script_engine.h

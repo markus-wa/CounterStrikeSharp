@@ -22,6 +22,7 @@ std::string JoinIndices(std::span<const std::size_t> indices)
 // A Slot Binding of the previous Gamedata as the resolver reads it on Linux.
 bindings::GamedataEntry ParseEntry(const std::string& key, const GamedataJson& entry)
 {
+    if (!entry.is_object()) return {}; // top-level values that are no entry: the sourceRevision stamp, disabledEngineFeatures
     const auto parsed = bindings::ParseGamedata(nlohmann::json{ { key, nlohmann::json::parse(entry.dump()) } }, "linux");
     return parsed.at(key);
 }

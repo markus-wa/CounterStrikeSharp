@@ -247,11 +247,13 @@ TEST_CASE("Carry-forward aligns the previous build's window when the recorded on
     CHECK(result.gamedata.at(kGameFrame.key)["vtable"]["linux"]["window"] == GamedataJson::parse(R"(["b", "c", "d"])"));
 }
 
-TEST_CASE("Carry-forward passes signatures and every other entry through untouched, in their order")
+TEST_CASE("Carry-forward passes signatures, top-level values and every other entry through untouched, in their order")
 {
     const auto previous = ServerBuild({ "a", "b", "c", "d", "e" });
     const auto next = ServerBuild({ "a", "new", "b", "c", "d", "e" });
     auto gamedata = GamedataJson::parse(R"({
+        "sourceRevision": "11228971",
+        "disabledEngineFeatures": [ { "id": "cssharp.server/game-system-events", "reason": "crashes" } ],
         "UTIL_ClientPrint": { "signatures": { "library": "server", "windows": "48 8B", "linux": "55 48 89 E5" } },
         "CBasePlayerPawn_CommitSuicide": { "offsets": { "windows": 386, "linux": 387 } },
         "ISource2Server::GameFrame": {},
@@ -269,7 +271,8 @@ TEST_CASE("Carry-forward passes signatures and every other entry through untouch
     std::vector<std::string> keys;
     for (const auto& [key, value] : result.gamedata.items())
         keys.push_back(key);
-    CHECK(keys == std::vector<std::string>{ "UTIL_ClientPrint", "CBasePlayerPawn_CommitSuicide", "ISource2Server::GameFrame", "GameEntitySystem" });
+    CHECK(keys == std::vector<std::string>{ "sourceRevision", "disabledEngineFeatures", "UTIL_ClientPrint", "CBasePlayerPawn_CommitSuicide",
+                                            "ISource2Server::GameFrame", "GameEntitySystem" });
     CHECK(SlotBindingLibraries(gamedata) == std::vector<std::string>{ "server" });
 }
 

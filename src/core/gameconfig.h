@@ -25,6 +25,8 @@ class CGameConfig
     // Gamedata as the Binding resolver reads it, for this OS. Core code never looks keys up itself: it asks the
     // Resolution Report (core/core_bindings.h).
     const bindings::Gamedata& GetGamedata() const { return m_gamedata; }
+    // The parsed Gamedata document, for what is not a Binding (Kill Switches: bindings::ParseKillSwitches).
+    const json& GetJson() const { return m_json; }
 
     static std::string GetDirectoryName(const std::string& directoryPathInput);
     static std::vector<int16_t> HexToByte(std::string_view src);

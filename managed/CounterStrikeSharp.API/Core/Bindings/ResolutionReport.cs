@@ -52,6 +52,13 @@ internal sealed record BindingResult(
     bool Healed = false);
 
 /// <summary>
+/// A Kill Switch on a whole Engine Feature (mirrors <c>bindings::EngineFeatureKill</c>): Gamedata's
+/// <c>disabledEngineFeatures</c> names it with a reason. <paramref name="Forced"/> when the operator's
+/// <c>ForceEnableEngineFeatures</c> keeps it available anyway. The id is not checked against any catalog.
+/// </summary>
+internal sealed record EngineFeatureKill(string Id, string Reason, bool Forced = false);
+
+/// <summary>
 /// The immutable Resolution Report for the running build (GLOSSARY.md): the build id, every core Binding as native
 /// resolved it at boot, and the native-owned Engine Features (name + Binding keys). Native keeps the authoritative
 /// copy; managed reads it once through <see cref="FromJson"/>. Tests build it by hand.
@@ -61,10 +68,12 @@ internal sealed class ResolutionReport
     private readonly Dictionary<string, BindingResult> _bindings;
 
     public ResolutionReport(string buildId, IEnumerable<BindingResult> bindings,
-        IEnumerable<EngineFeatureDeclaration> nativeFeatures, bool healEnabled = true)
+        IEnumerable<EngineFeatureDeclaration> nativeFeatures, bool healEnabled = true,
+        IEnumerable<EngineFeatureKill>? killSwitches = null)
     {
         BuildId = buildId;
         HealEnabled = healEnabled;
+        KillSwitches = killSwitches?.ToList() ?? [];
         Bindings = bindings.ToList();
         NativeFeatures = nativeFeatures.ToList();
         _bindings = new Dictionary<string, BindingResult>();
@@ -80,6 +89,9 @@ internal sealed class ResolutionReport
 
     /// <summary>Engine Features declared by native code; their Bindings are keys into this report.</summary>
     public IReadOnlyList<EngineFeatureDeclaration> NativeFeatures { get; }
+
+    /// <summary>Gamedata's feature-level Kill Switches, in Gamedata order.</summary>
+    public IReadOnlyList<EngineFeatureKill> KillSwitches { get; }
 
     /// <summary>null when native did not resolve the key (it is not in core Gamedata and no native feature declares it).</summary>
     public BindingResult? Find(string key) => _bindings.GetValueOrDefault(key);
@@ -100,7 +112,8 @@ internal sealed class ResolutionReport
                         b.Slot.Window),
                 b.Status == "Healed")),
             dto.Features.Select(f => new EngineFeatureDeclaration(f.Name, f.Bindings.Select(BindingDeclaration.Any).ToList())),
-            dto.HealEnabled ?? true);
+            dto.HealEnabled ?? true,
+            dto.KillSwitches?.Select(k => new EngineFeatureKill(k.Id, k.Reason, k.Forced)));
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -109,7 +122,10 @@ internal sealed class ResolutionReport
         Converters = { new JsonStringEnumConverter() },
     };
 
-    private sealed record ReportDto(string BuildId, List<BindingDto> Bindings, List<FeatureDto> Features, bool? HealEnabled = null);
+    private sealed record ReportDto(string BuildId, List<BindingDto> Bindings, List<FeatureDto> Features, bool? HealEnabled = null,
+        List<KillSwitchDto>? KillSwitches = null);
+
+    private sealed record KillSwitchDto(string Id, string Reason, bool Forced);
 
     private sealed record BindingDto(
         string Key,

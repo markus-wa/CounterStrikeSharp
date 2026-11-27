@@ -112,7 +112,13 @@ void ResolveCoreBindings()
     for (auto& declaration : declarations)
         for (const auto& compiled : CompiledSlots())
             if (declaration.kind == BindingKind::Slot && declaration.key == compiled.key) declaration.compiledIndex = compiled.index;
-    coreReport = Resolver().Resolve(ReadBuildId(), gamedata, images, declarations);
+    const auto resolved = Resolver().Resolve(ReadBuildId(), gamedata, images, declarations);
+    // Feature-level Kill Switches are Gamedata policy, not resolution: they join the report outside the resolver seam.
+    const auto& forceEnabled = globals::coreConfig->ForceEnableEngineFeatures;
+    coreReport = ResolutionReport(resolved.BuildId(), resolved.Bindings(), resolved.HealEnabled(),
+                                  ParseKillSwitches(globals::gameConfig->GetJson(), forceEnabled));
+    for (const auto& warning : FormatForceEnableWarnings(coreReport.KillSwitches(), forceEnabled))
+        CSSHARP_CORE_WARN("{}", warning);
     // Boot cost of resolving (signature scans, RTTI lookups, Vtable Checks), so a slow boot can be told apart.
     const std::chrono::duration<double, std::milli> elapsed = std::chrono::steady_clock::now() - start;
     const auto slotBindings = std::count_if(coreReport.Bindings().begin(), coreReport.Bindings().end(), [](const BindingResult& binding) {

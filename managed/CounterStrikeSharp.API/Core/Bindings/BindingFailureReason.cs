@@ -47,6 +47,13 @@ public enum BindingFailureReason
     /// was compiled with; a compiled call cannot follow it.
     /// </summary>
     CompiledSlotMoved = 11,
+
+    /// <summary>
+    /// A Kill Switch: Gamedata deliberately disables this. For a Binding, its value is blank for this OS (empty signature,
+    /// null offset or slot index); for an Engine Feature, Gamedata lists it in <c>disabledEngineFeatures</c> with a reason
+    /// (<see cref="EngineFeatureStatus.KillSwitchReason"/>).
+    /// </summary>
+    DisabledByGamedata = 12,
 }
 
 internal static class BindingFailureReasonExtensions
@@ -66,6 +73,7 @@ internal static class BindingFailureReasonExtensions
         BindingFailureReason.FingerprintMismatch => "fingerprint mismatch",
         BindingFailureReason.AmbiguousHeal => $"ambiguous heal ({matchCount} matches)",
         BindingFailureReason.CompiledSlotMoved => "compiled call's slot moved",
+        BindingFailureReason.DisabledByGamedata => "disabled by gamedata",
         _ => "unknown",
     };
 }

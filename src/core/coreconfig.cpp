@@ -100,6 +100,18 @@ void CCoreConfig::ReadOperatorSettings()
         else
             CSSHARP_CORE_WARN("CoreConfig HealEnabled {} is not true or false, using true", heal->dump());
     }
+
+    ForceEnableEngineFeatures.clear();
+    if (const auto force = m_json.find("ForceEnableEngineFeatures"); force != m_json.end() && !force->is_null())
+    {
+        const bool valid = force->is_array() && std::all_of(force->begin(), force->end(), [](const json& id) {
+            return id.is_string();
+        });
+        if (valid) ForceEnableEngineFeatures = force->get<std::vector<std::string>>();
+        else
+            CSSHARP_CORE_WARN("CoreConfig ForceEnableEngineFeatures {} is not a list of Engine Feature names, forcing none on",
+                              force->dump());
+    }
 }
 
 const std::string CCoreConfig::GetPath() const { return m_sPath; }

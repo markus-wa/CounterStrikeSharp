@@ -5,8 +5,9 @@ namespace CounterStrikeSharp.API.Core;
 
 /// <summary>
 /// Which Engine Features work on the running CS2 build (ADR-0002). Bindings are resolved once at boot; an Engine
-/// Feature is available exactly when all of its Bindings resolved. Ask by the stable string name
-/// (e.g. <c>cssharp.chat/say-hooks</c>) or by the generated <see cref="EngineFeature"/> enum.
+/// Feature is available exactly when all of its Bindings resolved and no Gamedata Kill Switch disables it (unless the
+/// operator forced it on). Ask by the stable string name (e.g. <c>cssharp.chat/say-hooks</c>) or by the generated
+/// <see cref="EngineFeature"/> enum.
 /// </summary>
 public static class EngineFeatures
 {
@@ -41,7 +42,7 @@ public static class EngineFeatures
     /// <summary>The CS2 build the Bindings were resolved against, e.g. <c>1.42.0.1/2000950</c>.</summary>
     public static string BuildId => Current.BuildId;
 
-    /// <summary>True if the named Engine Feature is declared and all of its Bindings resolved.</summary>
+    /// <summary>True if the named Engine Feature is declared, all of its Bindings resolved and no Kill Switch disables it.</summary>
     public static bool IsAvailable(string name) => Current.IsAvailable(name);
 
     /// <inheritdoc cref="IsAvailable(string)"/>
@@ -64,12 +65,16 @@ public static class EngineFeatures
     /// </summary>
     public static IReadOnlyList<PluginSignatureEntry> GetPluginSignatures() => PluginSignatures.All;
 
-    /// <summary>Builds the set from the native report and logs the startup report (one block).</summary>
+    /// <summary>
+    /// Builds the set from the native report and logs the startup report (one block), then a warning per Kill Switch that
+    /// names no Engine Feature (native warns about forced ones, it reads ForceEnableEngineFeatures).
+    /// </summary>
     internal static void LogStartupReport(ILogger logger)
     {
         var current = Current;
         logger.Log(current.AnyDisabled ? LogLevel.Warning : LogLevel.Information, "{StartupReport}",
             current.FormatStartupReport());
+        foreach (var warning in current.FormatUnknownKillSwitches()) logger.LogWarning("{KillSwitch}", warning);
     }
 
     /// <summary>Stops the server (native). Tests replace it.</summary>

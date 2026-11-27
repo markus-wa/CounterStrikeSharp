@@ -111,6 +111,23 @@ public class GameDataTests : IDisposable
     }
 
     [Fact]
+    public void GamedataWithKillSwitchesLoadsAndABlankOffsetIsNotRead()
+    {
+        LoadGameData($$"""
+                       { "Foo": { "offsets": { "{{CurrentOs}}": 42 } },
+                         "Blank": { "offsets": { "{{CurrentOs}}": null, "{{OtherOs}}": 7 } },
+                         "BlankSig": { "signatures": { "library": "server", "{{CurrentOs}}": "" } },
+                         "disabledEngineFeatures": [ { "id": "cssharp.server/game-system-events", "reason": "crashes" } ] }
+                       """);
+
+        Assert.Equal(42, GameData.GetOffset("Foo"));
+        Assert.Contains("BlankSig", GameData.GameDataProvider.Methods.Keys);
+        Assert.DoesNotContain("disabledEngineFeatures", GameData.GameDataProvider.Methods.Keys);
+        var ex = Assert.Throws<InvalidOperationException>(() => GameData.GetOffset("Blank"));
+        Assert.Contains("missing for this OS", ex.Message);
+    }
+
+    [Fact]
     public void GetOffsetThrowsWhenTheOffsetIsMissingForTheCurrentOs()
     {
         LoadGameData($$"""

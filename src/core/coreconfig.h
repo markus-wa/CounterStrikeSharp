@@ -42,6 +42,8 @@ class CCoreConfig
     std::string FailMode = std::string("disable");
     // Whether a Slot Binding whose window does not match at its Gamedata index may Heal (Linux; Windows has no Vtable Check).
     bool HealEnabled = true;
+    // Engine Features the operator keeps available although a Gamedata Kill Switch disables them (never a failed Binding).
+    std::vector<std::string> ForceEnableEngineFeatures;
 
     using json = nlohmann::json;
     CCoreConfig(const std::string& path);

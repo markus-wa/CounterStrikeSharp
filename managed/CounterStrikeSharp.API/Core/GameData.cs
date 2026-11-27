@@ -38,13 +38,14 @@ public class Offsets
     private int? _windows;
     private int? _linux;
 
-    [JsonPropertyName("windows")] public int Windows { get => _windows ?? 0; set => _windows = value; }
+    [JsonIgnore] public int Windows { get => _windows ?? 0; set => _windows = value; }
 
-    [JsonPropertyName("linux")] public int Linux { get => _linux ?? 0; set => _linux = value; }
+    [JsonIgnore] public int Linux { get => _linux ?? 0; set => _linux = value; }
 
-    internal int? WindowsOrNull => _windows;
+    // Read as nullable: a null offset is a Kill Switch (blank in Gamedata), not a reason to reject the whole file.
+    [JsonInclude, JsonPropertyName("windows")] internal int? WindowsOrNull { get => _windows; set => _windows = value; }
 
-    internal int? LinuxOrNull => _linux;
+    [JsonInclude, JsonPropertyName("linux")] internal int? LinuxOrNull { get => _linux; set => _linux = value; }
 }
 
 public sealed class GameDataProvider : IStartupService
@@ -68,7 +69,10 @@ public sealed class GameDataProvider : IStartupService
             foreach (string filePath in Directory.EnumerateFiles(_gameDataDirectoryPath, "*.json"))
             {
                 string jsonContent = File.ReadAllText(filePath);
-                Dictionary<string, LoadedGameData> loadedMethods = JsonSerializer.Deserialize<Dictionary<string, LoadedGameData>>(jsonContent)!;
+                // A top-level value that is not an object is not a Binding (e.g. the Kill Switch list "disabledEngineFeatures").
+                Dictionary<string, LoadedGameData> loadedMethods = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(jsonContent)!
+                    .Where(entry => entry.Value.ValueKind == JsonValueKind.Object)
+                    .ToDictionary(entry => entry.Key, entry => entry.Value.Deserialize<LoadedGameData>()!);
 
                 foreach (KeyValuePair<string, LoadedGameData> loadedMethod in loadedMethods)
                 {

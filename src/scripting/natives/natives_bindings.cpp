@@ -36,7 +36,8 @@ static std::string GetResolutionReport(ScriptContext& script_context)
 
 // The operator's FailMode: crash. Managed decides (it has the whole Engine Feature catalog), logs the startup report and
 // the fatal error naming the disabled Engine Features, then calls this. Natives are public, so native refuses too:
-// unless the operator set FailMode to crash and a core Binding failed (no Engine Feature can be disabled otherwise).
+// unless the operator set FailMode to crash and a core Binding failed or a Kill Switch is in force (no Engine Feature can
+// be disabled otherwise).
 static void FailModeStopServer(ScriptContext& script_context)
 {
     if (!globals::coreConfig->IsFailModeCrash())
@@ -45,12 +46,16 @@ static void FailModeStopServer(ScriptContext& script_context)
                                         globals::coreConfig->FailMode.c_str());
         return;
     }
-    const auto& bindings = bindings::CoreResolutionReport().Bindings();
-    if (std::none_of(bindings.begin(), bindings.end(), [](const bindings::BindingResult& binding) {
+    const auto& report = bindings::CoreResolutionReport();
+    const bool anyFailed = std::any_of(report.Bindings().begin(), report.Bindings().end(), [](const bindings::BindingResult& binding) {
         return !binding.Resolved();
-    }))
+    });
+    const bool anyKilled = std::any_of(report.KillSwitches().begin(), report.KillSwitches().end(),
+                                       [](const bindings::EngineFeatureKill& kill) { return !kill.forced; });
+    if (!anyFailed && !anyKilled)
     {
-        script_context.ThrowNativeError("Every core Binding resolved, so no core Engine Feature is disabled: not stopping the server");
+        script_context.ThrowNativeError(
+            "Every core Binding resolved and no Kill Switch is in force, so no core Engine Feature is disabled: not stopping the server");
         return;
     }
 

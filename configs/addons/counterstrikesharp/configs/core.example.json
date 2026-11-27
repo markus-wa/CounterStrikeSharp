@@ -13,5 +13,6 @@
     "MaximumFrameTasksExecutedPerTick": 1024,
     "FailMode": "disable",
     "HealEnabled": true,
-    "SchemaMissMode": "warn"
+    "SchemaMissMode": "warn",
+    "ForceEnableEngineFeatures": []
 }

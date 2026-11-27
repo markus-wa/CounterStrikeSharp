@@ -447,8 +447,8 @@ std::vector<std::string> FormatForceEnableWarnings(std::span<const EngineFeature
         if (kill == kills.end())
             lines.push_back("ForceEnableEngineFeatures names " + id + ", which no Kill Switch disables; ignored");
         else
-            lines.push_back("Engine Feature " + id + " is forced on by operator (ForceEnableEngineFeatures) although Gamedata disables it: " +
-                            kill->reason);
+            lines.push_back("Engine Feature " + id +
+                            " is forced on by operator (ForceEnableEngineFeatures) although Gamedata disables it: " + kill->reason);
     }
     return lines;
 }

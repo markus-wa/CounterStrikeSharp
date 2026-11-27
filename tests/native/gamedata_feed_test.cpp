@@ -541,6 +541,32 @@ TEST_CASE("With no snapshot for this build, the newest of the cached snapshots a
     }
 }
 
+TEST_CASE("Kill Switches carry forward: a kill in build X stays in force on build Y until Y has its own snapshot")
+{
+    const GamedataDir dir;
+    const std::string killed =
+        R"({ "disabledEngineFeatures": [ { "id": "cssharp.server/game-system-events", "reason": "crashes" } ], "Build100": {} })";
+    const auto onlyX = FeedOf(1, { "100" }, { { "100", killed } });
+
+    const auto onX = feed::KillSwitches(Boot(onlyX, dir, "100"));
+    REQUIRE(onX.size() == 1);
+    CHECK(onX[0].carriedForwardFrom.empty());
+
+    const auto onY = feed::KillSwitches(Boot(onlyX, dir, "200"));
+    REQUIRE(onY.size() == 1);
+    CHECK(onY[0].id == "cssharp.server/game-system-events");
+    CHECK(onY[0].reason == "crashes");
+    CHECK(onY[0].carriedForwardFrom == "1.0.100 (SourceRevision 100)");
+
+    const auto published = FeedOf(2, { "100", "200" }, { { "100", killed } });
+    CHECK(feed::KillSwitches(Boot(published, dir, "200")).empty());
+
+    // Bundled Gamedata is never carried forward, whatever build it was made for.
+    const auto bundled = feed::KillSwitches(Boot(kFeedDown, GamedataDir(), "300", killed));
+    REQUIRE(bundled.size() == 1);
+    CHECK(bundled[0].carriedForwardFrom.empty());
+}
+
 TEST_CASE("The bundled gamedata.json is stamped with its build, so it beats a cached older build")
 {
     std::ifstream stream(CSSHARP_GAMEDATA_PATH, std::ios::binary);

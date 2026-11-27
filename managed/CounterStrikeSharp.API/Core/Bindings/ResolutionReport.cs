@@ -54,9 +54,11 @@ internal sealed record BindingResult(
 /// <summary>
 /// A Kill Switch on a whole Engine Feature (mirrors <c>bindings::EngineFeatureKill</c>): Gamedata's
 /// <c>disabledEngineFeatures</c> names it with a reason. <paramref name="Forced"/> when the operator's
-/// <c>ForceEnableEngineFeatures</c> keeps it available anyway. The id is not checked against any catalog.
+/// <c>ForceEnableEngineFeatures</c> keeps it available anyway. <paramref name="CarriedForwardFrom"/> names the build whose
+/// Gamedata Snapshot was carried forward to this one (null for this build's own snapshot and for bundled Gamedata). The id
+/// is not checked against any catalog.
 /// </summary>
-internal sealed record EngineFeatureKill(string Id, string Reason, bool Forced = false);
+internal sealed record EngineFeatureKill(string Id, string Reason, bool Forced = false, string? CarriedForwardFrom = null);
 
 /// <summary>
 /// The immutable Resolution Report for the running build (GLOSSARY.md): the build id, every core Binding as native
@@ -119,7 +121,7 @@ internal sealed class ResolutionReport
                 b.Status == "Healed")),
             dto.Features.Select(f => new EngineFeatureDeclaration(f.Name, f.Bindings.Select(BindingDeclaration.Any).ToList())),
             dto.HealEnabled ?? true,
-            dto.KillSwitches?.Select(k => new EngineFeatureKill(k.Id, k.Reason, k.Forced))) { Gamedata = dto.Gamedata };
+            dto.KillSwitches?.Select(k => new EngineFeatureKill(k.Id, k.Reason, k.Forced, k.CarriedForwardFrom))) { Gamedata = dto.Gamedata };
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -131,7 +133,7 @@ internal sealed class ResolutionReport
     private sealed record ReportDto(string BuildId, List<BindingDto> Bindings, List<FeatureDto> Features, bool? HealEnabled = null,
         List<KillSwitchDto>? KillSwitches = null, string? Gamedata = null);
 
-    private sealed record KillSwitchDto(string Id, string Reason, bool Forced);
+    private sealed record KillSwitchDto(string Id, string Reason, bool Forced, string? CarriedForwardFrom = null);
 
     private sealed record BindingDto(
         string Key,

@@ -12,6 +12,7 @@
 #endif
 
 #include "core/compiled_slots.h"
+#include "core/core_gamedata.h"
 #include "core/coreconfig.h"
 #include "core/gameconfig.h"
 #include "core/globals.h"
@@ -115,7 +116,7 @@ void ResolveCoreBindings()
     // Feature-level Kill Switches are Gamedata policy, not resolution: they join the report outside the resolver seam.
     const auto& forceEnabled = globals::coreConfig->ForceEnableEngineFeatures;
     coreReport = ResolutionReport(resolved.BuildId(), resolved.Bindings(), resolved.HealEnabled(),
-                                  ForceEnable(globals::gameConfig->GetKillSwitches(), forceEnabled));
+                                  ForceEnable(feed::KillSwitches(CoreGamedata()), forceEnabled));
     for (const auto& warning : FormatForceEnableWarnings(coreReport.KillSwitches(), forceEnabled))
         CSSHARP_CORE_WARN("{}", warning);
     // Boot cost of resolving (signature scans, RTTI lookups, Vtable Checks), so a slow boot can be told apart.

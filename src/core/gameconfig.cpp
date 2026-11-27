@@ -19,9 +19,7 @@ bool CGameConfig::InitFromBytes(std::string_view bytes, char* conf_error, int co
     try
     {
         // Core Bindings are resolved from this alone (core/core_bindings.h), which also reports any key it cannot use.
-        const auto root = json::parse(bytes);
-        m_gamedata = bindings::ParseGamedata(root, platform);
-        m_killSwitches = bindings::ParseKillSwitches(root);
+        m_gamedata = bindings::ParseGamedataBytes(bytes, platform);
     }
     catch (const std::exception& ex)
     {

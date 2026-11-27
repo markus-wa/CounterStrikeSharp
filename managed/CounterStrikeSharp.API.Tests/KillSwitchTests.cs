@@ -166,6 +166,27 @@ public class KillSwitchTests : IDisposable
     }
 
     [Fact]
+    public void ACarriedForwardKillSwitchNamesItsSourceBuild()
+    {
+        var carried = GameSystemKilled with { CarriedForwardFrom = "1.41.9.7 (SourceRevision 11228971)" };
+
+        var features = Set(AllResolved, carried);
+
+        Assert.Equal("disabled by gamedata (carried forward from 1.41.9.7 (SourceRevision 11228971)): crashes on map change",
+            features.GetStatus(GameSystem.Name).Describe());
+        Assert.Equal(
+            "Engine Features for build 1.42.0.1/2000950: 2 of 3 available, 1 disabled:\n" +
+            "  cssharp.server/game-system-events disabled (disabled by gamedata (carried forward from 1.41.9.7 (SourceRevision 11228971)): " +
+            "crashes on map change)\n" +
+            "  Kill Switches in Gamedata: 1\n" +
+            "    cssharp.server/game-system-events: crashes on map change, carried forward from 1.41.9.7 (SourceRevision 11228971)",
+            features.FormatStartupReport());
+        Assert.Equal("available, forced on by operator (disabled by gamedata (carried forward from 1.41.9.7 (SourceRevision 11228971)): " +
+                     "crashes on map change)",
+            Set(AllResolved, carried with { Forced = true }).GetStatus(GameSystem.Name).Describe());
+    }
+
+    [Fact]
     public void AKillSwitchNamingNoEngineFeatureLogsAWarning()
     {
         EngineFeatures.Current = Set(AllResolved, new EngineFeatureKill("cssharp.made/up", "typo"));
@@ -189,9 +210,14 @@ public class KillSwitchTests : IDisposable
                                 """;
 
         var report = ResolutionReport.FromJson(
-            $$"""{ "buildId": "b", {{bindings}}, "killSwitches": [ { "id": "cssharp.x/y", "reason": "r", "forced": true } ] }""");
+            $$"""
+              { "buildId": "b", {{bindings}}, "killSwitches": [
+                { "id": "cssharp.x/y", "reason": "r", "forced": true, "carriedForwardFrom": null },
+                { "id": "cssharp.x/z", "reason": "r", "forced": false, "carriedForwardFrom": "1.41.9.7 (SourceRevision 11228971)" } ] }
+              """);
 
-        Assert.Equal([new EngineFeatureKill("cssharp.x/y", "r", true)], report.KillSwitches);
+        Assert.Equal([new EngineFeatureKill("cssharp.x/y", "r", true), new EngineFeatureKill("cssharp.x/z", "r", false, "1.41.9.7 (SourceRevision 11228971)")],
+            report.KillSwitches);
         Assert.Equal(BindingFailureReason.DisabledByGamedata, report.Find("Host_Say")!.Reason);
         Assert.Empty(ResolutionReport.FromJson($$"""{ "buildId": "b", {{bindings}} }""").KillSwitches);
     }

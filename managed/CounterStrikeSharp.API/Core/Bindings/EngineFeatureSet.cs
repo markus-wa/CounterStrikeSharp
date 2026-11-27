@@ -153,6 +153,7 @@ internal sealed class EngineFeatureSet
             foreach (var kill in Report.KillSwitches)
             {
                 text.Append($"\n    {kill.Id}: {kill.Reason}");
+                if (kill.CarriedForwardFrom != null) text.Append($", carried forward from {kill.CarriedForwardFrom}");
                 if (!_declarations.ContainsKey(kill.Id)) text.Append(", names no Engine Feature (ignored)");
                 else if (kill.Forced) text.Append(", forced on by operator (ForceEnableEngineFeatures)");
             }
@@ -207,7 +208,7 @@ internal sealed class EngineFeatureSet
         var kill = Report.KillSwitches.FirstOrDefault(k => k.Id == feature.Name);
         if (kill is { Forced: false })
             return new EngineFeatureStatus(feature.Name, true, null, BindingFailureReason.DisabledByGamedata, 0,
-                killSwitchReason: kill.Reason);
+                killSwitchReason: kill.Reason, killSwitchCarriedForwardFrom: kill.CarriedForwardFrom);
 
         var heals = new List<SlotHeal>();
         foreach (var declaration in feature.Bindings)
@@ -222,6 +223,7 @@ internal sealed class EngineFeatureSet
                     checked((int)binding.Offset), slot.Window ?? []));
         }
 
-        return new EngineFeatureStatus(feature.Name, true, null, BindingFailureReason.None, 0, heals, kill?.Reason, kill != null);
+        return new EngineFeatureStatus(feature.Name, true, null, BindingFailureReason.None, 0, heals, kill?.Reason, kill != null,
+            kill?.CarriedForwardFrom);
     }
 }

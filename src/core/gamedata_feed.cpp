@@ -470,6 +470,15 @@ ChosenGamedata ChooseGamedata(const GamedataSourceInputs& inputs)
     return chosen;
 }
 
+std::vector<bindings::EngineFeatureKill> KillSwitches(const ChosenGamedata& chosen)
+{
+    auto kills = bindings::ParseKillSwitches(nlohmann::json::parse(chosen.bytes, nullptr, false));
+    if (chosen.provenance.source == GamedataSource::CarriedForward)
+        for (auto& kill : kills)
+            kill.carriedForwardFrom = chosen.provenance.build;
+    return kills;
+}
+
 std::string FormatProvenance(const Provenance& provenance)
 {
     const auto vouched = ", seq " + std::to_string(provenance.seq.value_or(0)) + ", key " + provenance.keyId;

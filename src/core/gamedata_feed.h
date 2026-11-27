@@ -94,6 +94,10 @@ struct ChosenGamedata
 // feed. With the feed off, the bundled bytes, and nothing is fetched or read from the cache.
 ChosenGamedata ChooseGamedata(const GamedataSourceInputs& inputs);
 
+// The Kill Switches the chosen Gamedata puts in force ("disabledEngineFeatures", see bindings::ParseKillSwitches), none
+// forced. Those of a carried-forward snapshot name its build: they stay in force until this build has its own snapshot.
+std::vector<bindings::EngineFeatureKill> KillSwitches(const ChosenGamedata& chosen);
+
 // One line, e.g. "Gamedata: exact build 1.42.0.1 (SourceRevision 11268945) from the Gamedata Feed, seq 7, key
 // de4a068ed7d94def", "Gamedata: carried forward from build 1.41.9.7 (SourceRevision 11228971) in the Gamedata cache, seq
 // 7, key de4a068ed7d94def" or "Gamedata: bundled gamedata.json; warnings: index signature invalid".

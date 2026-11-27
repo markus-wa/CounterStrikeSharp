@@ -501,7 +501,10 @@ std::string DescribeUnavailable(const ResolutionReport& report, const EngineFeat
 {
     const std::string prefix = "Engine Feature " + feature.name;
     if (const auto* kill = EvaluateEngineFeature(report, feature).killSwitch)
-        return prefix + " is disabled (disabled by gamedata: " + kill->reason + ")";
+    {
+        const auto from = kill->carriedForwardFrom.empty() ? "" : " (carried forward from " + kill->carriedForwardFrom + ")";
+        return prefix + " is disabled (disabled by gamedata" + from + ": " + kill->reason + ")";
+    }
     for (const auto& declaration : feature.bindings)
     {
         const auto* binding = report.Find(declaration.key);
@@ -709,7 +712,10 @@ std::string ResolutionReportToJson(const ResolutionReport& report, std::span<con
 
     auto killSwitches = nlohmann::json::array();
     for (const auto& kill : report.KillSwitches())
-        killSwitches.push_back({ { "id", kill.id }, { "reason", kill.reason }, { "forced", kill.forced } });
+        killSwitches.push_back({ { "id", kill.id },
+                                 { "reason", kill.reason },
+                                 { "forced", kill.forced },
+                                 { "carriedForwardFrom", kill.carriedForwardFrom.empty() ? nlohmann::json() : nlohmann::json(kill.carriedForwardFrom) } });
 
     return nlohmann::json{ { "buildId", report.BuildId() },
                            { "healEnabled", report.HealEnabled() },

@@ -7,6 +7,7 @@ Here are the guidelines we'd like you to follow:
  - [Question or Problem?](#question)
  - [Issues and Bugs](#issue)
  - [Submission Guidelines](#submit)
+ - [Gamedata](#gamedata)
  - [Coding Format](#format)
 
 ## <a name="question"></a> Got a Question or Problem?
@@ -98,6 +99,24 @@ That's it! Thank you for your contribution!
 
 After your pull request is merged, you can safely delete your branch and pull the changes
 from the main (upstream) repository.
+
+## <a name="gamedata"></a> Gamedata
+
+Gamedata (signatures, offsets, Slot Bindings, Kill Switches) is edited in the Gamedata data repo only
+(`cssharp-gamedata`, see its README), never in this repo. A merge there publishes the Gamedata Feed.
+
+`configs/addons/counterstrikesharp/gamedata/gamedata.json` is generated from it: the data repo's newest Linux
+snapshot plus a `sourceRevision` stamp. CI fails when it differs, and when `tests/native/fixtures/gamedata-feed`
+differs from the data repo's `publisher/fixtures`. After a data repo change, check and regenerate:
+
+```shell
+python3 eng/gamedata/bundle.py check <data repo>
+python3 eng/gamedata/bundle.py gamedata <data repo> linux > configs/addons/counterstrikesharp/gamedata/gamedata.json
+```
+
+A release bundles each OS's newest snapshot in that OS's package and embeds the last published feed `seq` as the
+floor below which servers reject an index. CI reads the data repo from the `GAMEDATA_REPO` and `GAMEDATA_REF`
+variables (default `markus-wa/cssharp-gamedata` at `main`) and the published feed from `GAMEDATA_FEED_URL`.
 
 [github]: https://github.com/roflmuffin/CounterStrikeSharp
 [discord]: https://discord.gg/eAZU3guKWU

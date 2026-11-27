@@ -6,10 +6,14 @@ Spec: `.scratch/hardening-c-fast-fix/spec.md` (Gamedata Source). ADR-0006.
 
 **Blocked by:** 05, 06
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Tier:** 2 add-on · must
 
-- [ ] Doctest: a kill in X applies on build Y when Y has no entry; it no longer applies once Y has its own snapshot without the kill
-- [ ] The report names the source build of each carried-forward kill
-- [ ] End to end: local feed with a kill for build X, server reporting build Y → the feature is disabled and reported as carried forward
+- [x] Doctest: a kill in X applies on build Y when Y has no entry; it no longer applies once Y has its own snapshot without the kill
+- [x] The report names the source build of each carried-forward kill
+- [x] End to end: local feed with a kill for build X, server reporting build Y → the feature is disabled and reported as carried forward
+
+## Comments
+
+- 2026-11-27: Resolved on `spec-c/07-kills-carry-forward`; reshaped in review fixes: the carried-forward source build now comes from provenance (no per-kill field). Kill Switch block lines read `<id>: <reason>, carried forward from <build>`; feature lines use the spec's `disabled by gamedata: <reason>`. Doctests + e2e `carried-forward` case.

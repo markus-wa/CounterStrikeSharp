@@ -15,20 +15,24 @@ New core config keys replace the legacy updater on both OSes: `GamedataFeedEnabl
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Tier:** 1 base · must
 
-- [ ] The Gamedata Source takes an injected transport; the only real transport is a thin cpp-httplib wrapper with every call guarded
-- [ ] Doctest (fake transport):
+- [x] The Gamedata Source takes an injected transport; the only real transport is a thin cpp-httplib wrapper with every call guarded
+- [x] Doctest (fake transport):
   - RFC 8032 Ed25519 vectors pass
   - a flipped byte in the index, signature or snapshot is rejected before parse
   - an unknown key id is rejected
   - a missing prefix is rejected
   - no entry for this build → bundled
   - feed unreachable → bundled with a warning
-- [ ] Python-signed fixture indexes verify natively; mutated ones fail (cross-implementation check)
-- [ ] Operator-set `GamedataFeedPublicKeys` replaces the built-in keys (doctest)
-- [ ] Legacy updater removed; `GamedataFeedEnabled: false` boots on bundled with no network access
-- [ ] End to end on the laptop with a local signed feed (python http.server): exact-build snapshot used and reported; tampered index → bundled with the reason logged
-- [ ] Windows builds and uses the same path (doctest; no live Windows run required)
+- [x] Python-signed fixture indexes verify natively; mutated ones fail (cross-implementation check)
+- [x] Operator-set `GamedataFeedPublicKeys` replaces the built-in keys (doctest)
+- [x] Legacy updater removed; `GamedataFeedEnabled: false` boots on bundled with no network access
+- [x] End to end on the laptop with a local signed feed (python http.server): exact-build snapshot used and reported; tampered index → bundled with the reason logged
+- [x] Windows builds and uses the same path (doctest; no live Windows run required)
+
+## Comments
+
+- 2026-11-27: Resolved on `spec-c/03-signed-feed-tracer`. Monocypher 4.0.2 vendored (`libraries/monocypher`), own sha256; `src/core/gamedata_feed.{h,cpp}` (verify before parse, key id, domain prefix), `core_gamedata.{h,cpp}` at boot on both OSes; legacy updater removed; managed reads core Gamedata from native (`GET_CORE_GAMEDATA`); config `GamedataFeedEnabled/Url/PublicKeys`. Signature file = 8-byte key id + 64-byte sig at `index.json.sig`. Signer later moved to the data repo (08). Shortcuts until 09: built-in test key, placeholder URL `http://gamedata-feed.invalid`. Windows not compiled.

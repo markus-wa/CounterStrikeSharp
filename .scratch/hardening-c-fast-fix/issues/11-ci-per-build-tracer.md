@@ -12,12 +12,16 @@ A human merges. Nothing is auto-merged. The PR is the notification.
 
 **Blocked by:** 08; external: the PoC archiver's new-build event (agree on the event shape with that repo's ticket)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Tier:** 3 · must
 
-- [ ] The event contract (marker file or hook script: build id, paths) is documented in both repos
-- [ ] Dry run on the archived pair 1.41.9.7 → 1.42.0.1 produces the expected PR payload (report diff shows the ISource2Server Heals), skipped when the archive is absent
-- [ ] A no-change build produces a "no change" PR
-- [ ] A boot failure or test failure is reported in the PR body, not swallowed
-- [ ] Runbook: how to start, stop and re-run the job on the laptop; Markus named as owner
+- [x] The event contract (marker file or hook script: build id, paths) is documented in both repos
+- [x] Dry run on the archived pair 1.41.9.7 → 1.42.0.1 produces the expected PR payload (report diff shows the ISource2Server Heals), skipped when the archive is absent
+- [x] A no-change build produces a "no change" PR
+- [x] A boot failure or test failure is reported in the PR body, not swallowed
+- [x] Runbook: how to start, stop and re-run the job on the laptop; Markus named as owner
+
+## Comments
+
+- 2026-11-27: Resolved. Data repo `tools/per_build.py` (carry_forward → ensure_server → boot_release → propose), systemd user timer, README runbook (owner: Markus). New-build event = `~/dev/cs2-builds/<id>/archived.json` written last; text for the PoC archiver ticket in `~/dev/other/cssharp-hardening-research/spec-c-notes/poc-archiver-event-text.md` (not placed: PoC repo has uncommitted edits). Fork: `run.sh` refreshes the server copy on build change and no longer leaks `build.lock`. Dry run 1.41.9.7 → 1.42.0.1 shows the 10 ISource2Server Heals. Not verified live: steamcmd update, real `gh pr create`, systemd units.

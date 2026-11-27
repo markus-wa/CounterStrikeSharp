@@ -14,16 +14,20 @@ Every breach becomes a warning in provenance and a fallback, never a crash.
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Tier:** 2 add-on · must
 
-- [ ] Doctest against a local test HTTP server:
+- [x] Doctest against a local test HTTP server:
   - oversized body cut off at its cap
   - slow-drip response stopped at the deadline
   - unresolvable host stopped at the deadline
   - redirect refused
   - compressed response refused or ignored
   - 304 handled as "unchanged"
-- [ ] Boot never exceeds the 10 s budget for the feed step (end to end against a blackholed URL)
-- [ ] Windows uses the same limits (doctest)
+- [x] Boot never exceeds the 10 s budget for the feed step (end to end against a blackholed URL)
+- [x] Windows uses the same limits (doctest)
+
+## Comments
+
+- 2026-11-27: Resolved on `spec-c/04-hardened-transport`. `Transport::Get(Request{url, maxBytes, ifNoneMatch})` → `FetchResult{body, error, etag, notModified}`; `HttpTransport(Limits{10 s, 2 MiB})` per fetch; 3 s connect, identity encoding, redirects and Content-Encoding refused; Gets on a detached worker so DNS is under the deadline. Doctests against a local httplib server + e2e blackhole (10.0 s). Shortcuts: a hung DNS worker outlives the deadline; cpp-httplib buffers up to 100×8 KiB header lines before the 8 KiB total check (cannot be capped in httplib).

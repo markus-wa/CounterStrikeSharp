@@ -6,10 +6,14 @@ Spec: `.scratch/hardening-c-fast-fix/spec.md` (Hosting and publishing).
 
 **Blocked by:** 08
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Tier:** 4 add-on · later
 
-- [ ] Replay on a past upstream change (e.g. the Nov 13 `ClientPrint` / `CCSNavArea_IsValidNavMesh` edits) produces a PR with exactly those keys
-- [ ] No differences → no PR
-- [ ] Our additive fields survive the intake
+- [x] Replay on a past upstream change (e.g. the Nov 13 `ClientPrint` / `CCSNavArea_IsValidNavMesh` edits) produces a PR with exactly those keys
+- [x] No differences → no PR
+- [x] Our additive fields survive the intake
+
+## Comments
+
+- 2026-11-27: Resolved. Data repo `tools/upstream_intake.py` + shared `tools/pull_request.py` (`propose`): per-value diff of upstream `gamedata.json` against the newest snapshot per OS, never removes our additive fields, keeps blanked kills. Replay of the Nov 13 edits proposes exactly ClientPrint and CCSNavArea_IsValidNavMesh; today: no differences. Skipped: automatic trigger on fork sync.

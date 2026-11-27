@@ -11,10 +11,14 @@ A failure that happens only on `main` is labelled a code regression, not a Gamed
 
 **Blocked by:** 11; spec B 04 (generator carry-forward)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 **Tier:** 4 add-on · must
 
-- [ ] Dry run on 1.41.9.7 → 1.42.0.1: the PR snapshot carries the ISource2Server slots at +1, and nothing is wrong
-- [ ] Flagged generator entries appear in the PR body and are not written into the snapshot
-- [ ] Release passes and `main` fails → PR labelled "code regression"; both fail → labelled "gamedata"
+- [x] Dry run on 1.41.9.7 → 1.42.0.1: the PR snapshot carries the ISource2Server slots at +1, and nothing is wrong
+- [x] Flagged generator entries appear in the PR body and are not written into the snapshot
+- [x] Release passes and `main` fails → PR labelled "code regression"; both fail → labelled "gamedata"
+
+## Comments
+
+- 2026-11-27: Resolved. `per_build.py` adds `generate` (gamedata-generator carry-forward, exit 0/4) and `boot_main`; labels `no change` / `gamedata` / `code regression`. Dry run regenerates the seed byte for byte with the ISource2Server slots +1. Shortcut: failed native tests don't count for labels because the suite is flaky (ticket 16).

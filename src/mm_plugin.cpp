@@ -91,6 +91,7 @@ bool CounterStrikeSharpMMPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, s
         {
             if (!succeeded)
             {
+                StopGamedataPoll();
                 HookSet::ClearAll();
                 DynamicHook::ShutdownAll();
             }
@@ -167,6 +168,8 @@ bool CounterStrikeSharpMMPlugin::Load(PluginId id, ISmmAPI* ismm, char* error, s
         on_activate_callback = globals::callbackManager.CreateCallback("OnMapStart");
         on_map_end_callback = globals::callbackManager.CreateCallback("OnMapEnd");
         on_metamod_all_plugins_loaded_callback = globals::callbackManager.CreateCallback("OnMetamodAllPluginsLoaded");
+        // Newer Gamedata while running: a restart notice and OnGamedataUpdateAvailable, never a restart.
+        StartGamedataPoll();
 
         // By the slot index the boot Vtable Check verified. Disabled game-frame: no ticks, timers or frame tasks; the
         // server keeps running and the startup report names the failed Binding.
@@ -248,6 +251,7 @@ KHook::Return<void> CounterStrikeSharpMMPlugin::Hook_StartupServer(INetworkServe
 }
 bool CounterStrikeSharpMMPlugin::Unload(char* error, size_t maxlen)
 {
+    StopGamedataPoll();
     HookSet::ClearAll();
     globals::ShutdownHooks();
     DynamicHook::ShutdownAll();

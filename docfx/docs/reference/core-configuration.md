@@ -64,5 +64,9 @@ The feed's base URL (`http://host[:port][/path]`). CS# reads `index.json`, `inde
 
 Optional list of Ed25519 public keys (64 hex digits each) that may sign the feed's index, for operators who run their own feed. When set, it replaces the built-in keys.
 
+## GamedataFeedPollMinutes
+
+Minutes between checks for newer Gamedata while the server runs (default `15`; `0` turns the check off; ignored when `GamedataFeedEnabled` is `false`). Gamedata applies at boot only: when the feed has a newer verified snapshot for the running build, CS# stores it in `gamedata/cache/`, logs once that a restart will apply it, and raises the `OnGamedataUpdateAvailable` listener (build, seq and the Engine Features whose Gamedata changes) so an admin plugin can schedule the restart. CS# never restarts the server itself. The check runs off the game thread under the same limits and verification as the boot fetch.
+
 ## MaximumFrameTasksExecutedPerTick
 The maximum amount of `NextFrame` and `NextWorldUpdate` tasks that can be executed on a single game frame. The queue totals are tracked separately. Defaults to 1024. This value can be reduced to prevent long frame burstiness.

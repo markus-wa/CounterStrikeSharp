@@ -50,6 +50,17 @@ internal sealed class EngineFeatureSet
     public EngineFeatureStatus GetStatus(string name) =>
         _statuses.TryGetValue(name, out var status) ? status : EngineFeatureStatus.Unknown(name);
 
+    /// <summary>
+    /// The Engine Features a Gamedata update touches: every declared one with a Binding among <paramref name="keys"/>, and
+    /// every Kill Switch id in <paramref name="killSwitches"/> (declared or not), ordered by name.
+    /// </summary>
+    public IEnumerable<string> ChangedBy(IEnumerable<string> keys, IEnumerable<string> killSwitches)
+    {
+        var changedKeys = keys.ToHashSet();
+        return _declarations.Values.Where(f => f.Bindings.Any(b => changedKeys.Contains(b.Key))).Select(f => f.Name)
+            .Union(killSwitches).Order(StringComparer.Ordinal);
+    }
+
     /// <summary>Throws <see cref="EngineFeatureUnavailableException"/> unless the Engine Feature is available.</summary>
     public void ThrowIfUnavailable(string name)
     {

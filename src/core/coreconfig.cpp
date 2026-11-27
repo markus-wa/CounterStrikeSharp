@@ -18,7 +18,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <fstream>
+#include <limits>
 
 #include "core/log.h"
 
@@ -114,6 +116,15 @@ void CCoreConfig::ReadOperatorSettings()
         else
             CSSHARP_CORE_WARN("CoreConfig ForceEnableEngineFeatures {} is not a list of Engine Feature names, forcing none on",
                               force->dump());
+    }
+
+    GamedataFeedPollMinutes = 15;
+    if (const auto poll = m_json.find("GamedataFeedPollMinutes"); poll != m_json.end() && !poll->is_null())
+    {
+        if (poll->is_number_unsigned() && poll->get<std::uint64_t>() <= static_cast<std::uint64_t>(std::numeric_limits<int>::max()))
+            GamedataFeedPollMinutes = poll->get<int>();
+        else
+            CSSHARP_CORE_WARN("CoreConfig GamedataFeedPollMinutes {} is not a whole number of minutes (0 or more), using 15", poll->dump());
     }
 
     GamedataFeedPublicKeys.reset();

@@ -44,6 +44,8 @@ class CCoreConfig
     // ticket 09 sets the fork's feed URL.
     std::string GamedataFeedUrl = std::string("http://gamedata-feed.invalid");
     std::optional<std::vector<std::string>> GamedataFeedPublicKeys;
+    // Minutes between polls for newer Gamedata while the server runs (core/core_gamedata.h); 0: no polling.
+    int GamedataFeedPollMinutes = 15;
     // The removed legacy updater's keys (AutoUpdateEnabled, AutoUpdateURL) present in the file: ignored, reported once.
     std::vector<std::string> LegacyConfigKeys;
     // What happens when a core Engine Feature is disabled after boot resolution: "disable" (fail soft, ADR-0002) or

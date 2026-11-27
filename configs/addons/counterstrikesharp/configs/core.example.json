@@ -10,6 +10,7 @@
     "UnlockConVars": true,
     "GamedataFeedEnabled": true,
     "GamedataFeedUrl": "http://gamedata-feed.invalid",
+    "GamedataFeedPollMinutes": 15,
     "MaximumFrameTasksExecutedPerTick": 1024,
     "FailMode": "disable",
     "HealEnabled": true,

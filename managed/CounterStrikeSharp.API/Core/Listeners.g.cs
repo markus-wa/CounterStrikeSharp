@@ -188,6 +188,18 @@ namespace CounterStrikeSharp.API.Core
         public delegate void OnHostNameChanged(string hostname);
 
         /// <summary>
+        /// Called on the game thread when the Gamedata Feed has a newer verified snapshot for the running build. It is
+        /// staged in the Gamedata cache and applies on the next boot: CounterStrikeSharp never restarts the server, so an
+        /// admin plugin can schedule the restart (for example between matches). Raised once per staged snapshot.
+        /// </summary>
+        /// <param name="build">The build the snapshot is for (the running one), e.g. <c>1.42.0.1 (SourceRevision 11268945)</c></param>
+        /// <param name="seq">The seq of the signed index that vouches for the snapshot</param>
+        /// <param name="changedEngineFeatures">The Engine Features whose Gamedata the snapshot changes</param>
+        [ListenerName("OnGamedataUpdateAvailable")]
+        public delegate void OnGamedataUpdateAvailable(string build, ulong seq,
+            [CastFrom(typeof(string))] ChangedEngineFeatures changedEngineFeatures);
+
+        /// <summary>
         /// Called before the server enters fatal shutdown.
         /// </summary>
         [ListenerName("OnPreFatalShutdown")]
